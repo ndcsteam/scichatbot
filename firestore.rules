@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function isAdmin() {
+      return signedIn() && role() == "admin";
+    }
+
+    function isTeacher() {
+      return signedIn() && role() == "teacher";
+    }
+
+    function isStudent() {
+      return signedIn() && role() == "student";
+    }
+
+    function botPath(botId) {
+      return /databases/$(database)/documents/chatbots/$(botId);
+    }
+
+    function ownsBot(botId) {
+      return isTeacher() && get(botPath(botId)).data.ownerId == request.auth.uid;
+    }
+
+    function validBot(data) {
+      return data.keys().hasOnly([
+          "ownerId",
+          "ownerEmail",
+          "name",
+          "model",
+          "systemPrompt",
+          "welcomeMessage",
+          "ragEnabled",
+          "disabled",
+          "createdAt",
+          "updatedAt"
+        ])
+        && data.ownerId is string
+        && data.ownerEmail is string
+        && data.ownerEmail.size() > 0
+        && data.ownerEmail.size() <= 200
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 80
+        && data.model is string
+        && data.model.size() > 0
+        && data.model.size() <= 100
+        && data.systemPrompt is string
+        && data.systemPrompt.size() <= 8000
+        && data.welcomeMessage is string
+        && data.welcomeMessage.size() <= 2000
+        && data.ragEnabled is bool
+        && data.disabled is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+
+    match /chatbots/{botId} {
+      allow read: if isAdmin()
+        || (isTeacher() && resource.data.ownerId == request.auth.uid)
+        || (
+          isStudent()
+          && resource.data.disabled == false
+          && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid))
+        );
+
+      allow create: if isTeacher()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.disabled == false
+        && validBot(request.resource.data);
+
+      allow update: if isTeacher()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.disabled == resource.data.disabled
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validBot(request.resource.data);
+
+      allow delete: if false;
+
+      match /members/{studentUid} {
+        allow read: if isAdmin()
+          || ownsBot(botId)
+          || (isStudent() && resource.data.studentUid == request.auth.uid);
+        allow write: if false;
+      }
+
+      match /documents/{docId} {
+        allow read: if isAdmin() || ownsBot(botId);
+        allow create: if ownsBot(botId)
+          && request.resource.data.keys().hasOnly(["fileName", "storagePath", "status", "createdAt"])
+          && request.resource.data.status == "processing"
+          && request.resource.data.fileName is string
+          && request.resource.data.fileName.matches("(?i).+\\.(txt|md|pdf)")
+          && request.resource.data.storagePath == "chatbots/" + botId + "/docs/" + docId + "/" + request.resource.data.fileName
+          && request.resource.data.createdAt is timestamp;
+        allow update, delete: if false;
+      }
+
+      match /chunks/{chunkId} {
+        allow read, write: if false;
+      }
+
+      match /conversations/{studentUid} {
+        allow read: if isAdmin()
+          || ownsBot(botId)
+          || (isStudent() && request.auth.uid == studentUid && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid)));
+        allow write: if false;
+
+        match /messages/{messageId} {
+          allow read: if isAdmin()
+            || ownsBot(botId)
+            || (isStudent() && request.auth.uid == studentUid && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid)));
+          allow write: if false;
+        }
+      }
+    }
+  }
+}

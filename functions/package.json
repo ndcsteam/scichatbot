@@ -1,0 +1,21 @@
+{
+  "name": "scichatbot-functions",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types --test src/rag.test.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.6.0",
+    "firebase-functions": "^6.6.0",
+    "unpdf": "^1.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
