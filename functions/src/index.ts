@@ -19,7 +19,7 @@ export const REGION = "asia-east1";
 
 const allowedDomain = defineString("ALLOWED_GOOGLE_DOMAIN", { default: "" });
 const bootstrapAdmins = defineString("BOOTSTRAP_ADMIN_EMAILS", { default: "" });
-const poeKey = defineSecret("POE_API_KEY");
+const poeApiKey = defineSecret("POE_API_KEY");
 
 const callOptions = { region: REGION, invoker: "public" as const };
 const ROLES = new Set(["admin", "teacher", "student"]);
@@ -228,7 +228,7 @@ export const processDocument = onObjectFinalized(
 );
 
 export const sendMessage = onCall(
-  { ...callOptions, timeoutSeconds: 120, memory: "512MiB", secrets: [poeKey] },
+  { ...callOptions, timeoutSeconds: 120, memory: "512MiB", secrets: [poeApiKey] },
   async (request) => {
     const studentUid = requireUid(request.auth?.uid);
     if (request.auth?.token.role !== "student") {
@@ -302,11 +302,13 @@ async function askPoe(
   model: string,
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
 ): Promise<string> {
+  const apiKey = poeApiKey.value();
+  if (!apiKey) throw new HttpsError("failed-precondition", "尚未設定 Poe API Key");
   if (!model.trim()) throw new HttpsError("failed-precondition", "尚未設定 Poe 模型");
   const response = await fetch("https://api.poe.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${poeKey.value()}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model, messages, stream: false }),
