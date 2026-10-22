@@ -1,4 +1,4 @@
-export const DEFAULT_MODEL = "Claude-Sonnet-4.6";
+export const DEFAULT_MODEL = "Gemini-3.8-Flash";
 
 export const DEFAULT_SYSTEM_PROMPT =
   "你是一位科學科學習助教，用繁體中文回答學生。解釋要清楚，並在適當時舉出例子。";

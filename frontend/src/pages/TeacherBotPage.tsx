@@ -279,7 +279,7 @@ export function TeacherBotPage() {
           <input name="name" defaultValue={bot.name} maxLength={80} required />
         </label>
         <label>
-          Poe 模型
+          AI模型
           <select name="model" value={model} onChange={(event) => setModel(event.target.value)} required>
             {!modelKnown && model ? <option value={model}>{model}</option> : null}
             {modelGroups.map(([owner, items]) => (
@@ -293,7 +293,11 @@ export function TeacherBotPage() {
             ))}
           </select>
         </label>
-        {modelsNote ? <p className="muted">{modelsNote}</p> : <p className="muted">選擇這個機械人回答時使用的 Poe 模型。</p>}
+        {modelsNote ? (
+          <p className="muted">{modelsNote}</p>
+        ) : (
+          <p className="muted">Google 使用 Gemini 3.8 Flash。其他供應商各提供一個價錢相近、可以讀圖的模型。</p>
+        )}
         <label>
           系統提示詞
           <textarea name="systemPrompt" defaultValue={bot.systemPrompt} maxLength={8000} rows={6} />

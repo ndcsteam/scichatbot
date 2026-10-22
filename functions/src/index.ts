@@ -344,7 +344,7 @@ async function askPoe(
 ): Promise<string> {
   const apiKey = poeApiKey.value();
   if (!apiKey) throw new HttpsError("failed-precondition", "尚未設定 Poe API Key");
-  if (!model.trim()) throw new HttpsError("failed-precondition", "尚未設定 Poe 模型");
+  if (!model.trim()) throw new HttpsError("failed-precondition", "尚未設定 AI 模型");
   const response = await fetch("https://api.poe.com/v1/chat/completions", {
     method: "POST",
     headers: {

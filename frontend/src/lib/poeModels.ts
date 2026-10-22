@@ -4,25 +4,28 @@ export type PoeModelChoice = {
   owner: string;
 };
 
-const LABS = ["Anthropic", "OpenAI", "Google", "DeepSeek", "XAI", "Meta", "Mistral", "Alibaba", "Moonshot AI"];
+const PRICE_BAND = 2;
+const GOOGLE_MODEL_ID = "gemini-3.8-flash";
+
+const OWNER_ORDER = ["Google", "Anthropic", "OpenAI", "XAI", "Mistral", "DeepSeek", "Meta", "Alibaba", "Moonshot AI"];
 
 export const POE_LAB_LABEL: Record<string, string> = {
+  Google: "Google",
   Anthropic: "Anthropic",
   OpenAI: "OpenAI",
-  Google: "Google",
-  DeepSeek: "DeepSeek",
   XAI: "xAI",
-  Meta: "Meta",
   Mistral: "Mistral",
+  DeepSeek: "DeepSeek",
+  Meta: "Meta",
   Alibaba: "Alibaba",
   "Moonshot AI": "Moonshot",
 };
 
 const FALLBACK: PoeModelChoice[] = [
-  { id: "claude-sonnet-4.6", label: "Claude-Sonnet-4.6", owner: "Anthropic" },
+  { id: "gemini-3.8-flash", label: "Gemini-3.8-Flash", owner: "Google" },
   { id: "claude-haiku-4.5", label: "Claude-Haiku-4.5", owner: "Anthropic" },
-  { id: "gpt-4o", label: "GPT-4o", owner: "OpenAI" },
-  { id: "gemini-3-flash", label: "Gemini-3-Flash", owner: "Google" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4-Mini", owner: "OpenAI" },
+  { id: "grok-4.3", label: "Grok-4.3", owner: "XAI" },
 ];
 
 type PoeModelRecord = {
@@ -31,6 +34,12 @@ type PoeModelRecord = {
   supported_endpoints?: unknown;
   architecture?: { input_modalities?: unknown; output_modalities?: unknown };
   metadata?: { display_name?: unknown };
+  pricing?: { prompt?: unknown; completion?: unknown } | null;
+};
+
+type PricedModel = PoeModelChoice & {
+  prompt: number;
+  completion: number;
 };
 
 let cached: Promise<PoeModelChoice[]> | null = null;
@@ -39,7 +48,7 @@ export function loadPoeModels(): Promise<PoeModelChoice[]> {
   if (!cached) {
     cached = fetch("https://api.poe.com/v1/models")
       .then(async (response) => {
-        if (!response.ok) throw new Error("無法讀取 Poe 模型");
+        if (!response.ok) throw new Error("無法讀取 AI 模型");
         return chatModels(await response.json());
       })
       .catch((error: unknown) => {
@@ -52,12 +61,24 @@ export function loadPoeModels(): Promise<PoeModelChoice[]> {
 
 export function chatModels(body: unknown): PoeModelChoice[] {
   const data = body && typeof body === "object" && "data" in body && Array.isArray(body.data) ? body.data : [];
-  const choices: PoeModelChoice[] = [];
-  for (const item of data) {
-    const choice = asChatModel(item);
-    if (choice) choices.push(choice);
+  const priced = data.flatMap((item) => {
+    const model = asPricedModel(item);
+    return model ? [model] : [];
+  });
+  const google = priced.find((item) => item.id.toLowerCase() === GOOGLE_MODEL_ID);
+  if (!google) return FALLBACK;
+
+  const chosen = new Map<string, PoeModelChoice>([[google.owner, { id: google.id, label: google.label, owner: google.owner }]]);
+  for (const owner of new Set(priced.map((item) => item.owner))) {
+    if (owner === google.owner) continue;
+    const best = closestModel(
+      priced.filter((item) => item.owner === owner),
+      google.prompt,
+      google.completion,
+    );
+    if (best) chosen.set(owner, { id: best.id, label: best.label, owner: best.owner });
   }
-  return choices.length > 0 ? choices : FALLBACK;
+  return [...chosen.values()].sort((left, right) => ownerRank(left.owner) - ownerRank(right.owner) || left.label.localeCompare(right.label));
 }
 
 export function groupPoeModels(models: PoeModelChoice[]): Array<[string, PoeModelChoice[]]> {
@@ -67,32 +88,54 @@ export function groupPoeModels(models: PoeModelChoice[]): Array<[string, PoeMode
     list.push(model);
     grouped.set(model.owner, list);
   }
-  return [...grouped.entries()].sort(([left], [right]) => labRank(left) - labRank(right));
+  return [...grouped.entries()].sort(([left], [right]) => ownerRank(left) - ownerRank(right));
 }
 
-function asChatModel(value: unknown): PoeModelChoice | null {
+function closestModel(models: PricedModel[], prompt: number, completion: number): PricedModel | null {
+  const near = models.filter((item) => inBand(item.prompt, prompt) && inBand(item.completion, completion));
+  near.sort((left, right) => priceDistance(left, prompt, completion) - priceDistance(right, prompt, completion) || left.label.localeCompare(right.label));
+  return near[0] ?? null;
+}
+
+function asPricedModel(value: unknown): PricedModel | null {
   if (!value || typeof value !== "object") return null;
   const item = value as PoeModelRecord;
-  const owner = typeof item.owned_by === "string" ? item.owned_by : "";
-  if (!LABS.includes(owner)) return null;
   const endpoints = Array.isArray(item.supported_endpoints) ? item.supported_endpoints : [];
   if (!endpoints.includes("/v1/chat/completions")) return null;
   const inputs = modalities(item.architecture?.input_modalities);
   const outputs = modalities(item.architecture?.output_modalities);
-  if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") return null;
+  if (!inputs.includes("text") || !inputs.includes("image") || !outputs.includes("text")) return null;
+  const prompt = numberOrNull(item.pricing?.prompt);
+  const completion = numberOrNull(item.pricing?.completion);
+  const owner = typeof item.owned_by === "string" ? item.owned_by : "";
   const id = typeof item.id === "string" ? item.id : "";
   const label = typeof item.metadata?.display_name === "string" && item.metadata.display_name.trim()
     ? item.metadata.display_name.trim()
     : id;
-  if (!id || !label) return null;
-  return { id, label, owner };
+  if (!owner || !id || !label || prompt === null || completion === null) return null;
+  return { id, label, owner, prompt, completion };
+}
+
+function inBand(value: number, reference: number): boolean {
+  return value >= reference / PRICE_BAND && value <= reference * PRICE_BAND;
+}
+
+function priceDistance(model: PricedModel, prompt: number, completion: number): number {
+  return Math.abs(model.prompt - prompt) / prompt + Math.abs(model.completion - completion) / completion;
 }
 
 function modalities(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function labRank(owner: string): number {
-  const index = LABS.indexOf(owner);
-  return index === -1 ? LABS.length : index;
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ownerRank(owner: string): number {
+  const index = OWNER_ORDER.indexOf(owner);
+  return index === -1 ? OWNER_ORDER.length : index;
 }
