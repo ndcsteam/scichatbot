@@ -12,11 +12,17 @@ service firebase.storage {
         return request.auth.token.role == "admin";
       }
 
+      function sizeAllowed() {
+        return !request.resource.keys().hasAny(["size"])
+          || request.resource.size == null
+          || request.resource.size < 32 * 1024 * 1024;
+      }
+
       allow read: if request.auth != null && (isAdmin() || ownsBot());
 
       allow create, update: if request.auth != null
         && ownsBot()
-        && request.resource.size < 32 * 1024 * 1024
+        && sizeAllowed()
         && fileName.matches("(?i).+\\.(txt|md|pdf)");
 
       allow delete: if request.auth != null && (isAdmin() || ownsBot());
