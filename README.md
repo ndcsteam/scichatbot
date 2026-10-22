@@ -74,6 +74,8 @@ cd ..
 firebase deploy --only functions,firestore,storage
 ```
 
+Storage 規則會讀取 Firestore 來確認機械人的老師。第一次部署時，Firebase CLI 會問是否授權，請選「是」。在非互動環境（例如 CI）部署時，CLI 會略過這一步，上傳參考資料就會一律顯示沒有權限。這時要手動把 `roles/firebaserules.firestoreServiceAgent` 授予 `service-專案編號@gcp-sa-firebasestorage.iam.gserviceaccount.com`。
+
 部署完成後，用首位管理員的學校 Google 帳號開啟網站並登入。該帳號會成為管理員，之後可在「帳號」頁把其他人設為老師或學生。
 
 修改學校網域或管理員電郵後，要重新部署 Functions 才會生效。
