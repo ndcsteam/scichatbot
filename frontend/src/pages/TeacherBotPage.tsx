@@ -261,9 +261,7 @@ export function TeacherBotPage() {
       await uploadBytes(ref(storage, storagePath), file);
       uploadedDocId = "";
       await updateDoc(doc(db, "chatbots", targetId), { ragEnabled: true, updatedAt: serverTimestamp() });
-      const notice = "已上傳，系統正在整理參考資料";
-      if (creating) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
-      else setMessage(notice);
+      if (creating) navigate(`/teacher/bots/${targetId}`, { replace: true });
     } catch (error) {
       if (uploadedDocId && targetId) await deleteDocument(targetId, uploadedDocId).catch(() => undefined);
       const notice = errorText(error);
@@ -361,6 +359,7 @@ export function TeacherBotPage() {
     disabled: false,
   };
   const selected = people.find((person) => person.uid === selectedUid);
+  const organizing = documents.some((item) => item.status !== "ready" && item.status !== "error");
 
   return (
     <Layout>
@@ -381,7 +380,8 @@ export function TeacherBotPage() {
           )}
         </div>
       </div>
-      {message ? <p className="notice">{message}</p> : null}
+      {organizing ? <p className="notice">已上傳，系統正在整理參考資料</p> : null}
+      {!organizing && message ? <p className="notice">{message}</p> : null}
 
       <form ref={formRef} key={shown.id} className="panel stack" onSubmit={(event) => void saveSettings(event)}>
         <h2>設定</h2>
