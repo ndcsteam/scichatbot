@@ -235,9 +235,14 @@ export function TeacherBotPage() {
       setMessage("只可上傳 txt、md 或 pdf，檔名不可包含斜線");
       return;
     }
+    if (file.size >= 32 * 1024 * 1024) {
+      setMessage("檔案必須小於 32MB");
+      return;
+    }
     setBusy(true);
     setMessage("");
     let targetId = bot?.id ?? "";
+    let uploadedDocId = "";
     try {
       if (creating) {
         const created = await createFromForm(formRef.current);
@@ -252,12 +257,15 @@ export function TeacherBotPage() {
         status: "processing",
         createdAt: serverTimestamp(),
       });
+      uploadedDocId = docRef.id;
       await uploadBytes(ref(storage, storagePath), file);
+      uploadedDocId = "";
       await updateDoc(doc(db, "chatbots", targetId), { ragEnabled: true, updatedAt: serverTimestamp() });
       const notice = "已上傳，系統正在整理參考資料";
       if (creating) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
       else setMessage(notice);
     } catch (error) {
+      if (uploadedDocId && targetId) await deleteDocument(targetId, uploadedDocId).catch(() => undefined);
       const notice = errorText(error);
       if (creating && targetId) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
       else setMessage(notice);
@@ -413,7 +421,7 @@ export function TeacherBotPage() {
         <div className="settings-block">
           <h3>參考資料</h3>
           <label className="file">
-            上傳 txt、md 或 pdf
+            上傳 txt、md 或 pdf，每個小於 32MB
             <input
               type="file"
               accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"

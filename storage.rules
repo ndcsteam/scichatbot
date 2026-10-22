@@ -16,7 +16,7 @@ service firebase.storage {
 
       allow create, update: if request.auth != null
         && ownsBot()
-        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.size < 32 * 1024 * 1024
         && fileName.matches("(?i).+\\.(txt|md|pdf)");
 
       allow delete: if request.auth != null && (isAdmin() || ownsBot());
