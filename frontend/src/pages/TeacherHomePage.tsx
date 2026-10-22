@@ -1,21 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp, where } from "firebase/firestore";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
-import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, DEFAULT_WELCOME } from "../lib/defaults";
-import { errorText } from "../lib/format";
 import type { Chatbot } from "../types";
 
 type Row = Chatbot & { id: string };
 
 export function TeacherHomePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
-  const [name, setName] = useState("");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!db || !user) return;
@@ -27,32 +23,6 @@ export function TeacherHomePage() {
     );
   }, [user]);
 
-  async function createBot(event: FormEvent) {
-    event.preventDefault();
-    if (!db || !user || !name.trim()) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await addDoc(collection(db, "chatbots"), {
-        ownerId: user.uid,
-        ownerEmail: (user.email ?? "").toLowerCase(),
-        name: name.trim(),
-        model: DEFAULT_MODEL,
-        systemPrompt: DEFAULT_SYSTEM_PROMPT,
-        welcomeMessage: DEFAULT_WELCOME,
-        ragEnabled: false,
-        disabled: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      setName("");
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <Layout>
       <div className="page-head">
@@ -60,17 +30,10 @@ export function TeacherHomePage() {
           <p className="eyebrow">老師</p>
           <h1>我的聊天機械人</h1>
         </div>
-      </div>
-      <form className="inline-form" onSubmit={(event) => void createBot(event)}>
-        <label>
-          新機械人名稱
-          <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} required />
-        </label>
-        <button type="submit" className="button" disabled={busy || !name.trim()}>
+        <button type="button" className="button" onClick={() => navigate("/teacher/bots/new")}>
           建立
         </button>
-      </form>
-      {message ? <p className="notice">{message}</p> : null}
+      </div>
       {rows.length === 0 ? (
         <p className="muted">尚未建立聊天機械人。</p>
       ) : (

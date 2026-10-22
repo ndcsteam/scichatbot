@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  addDoc,
   collection,
   doc,
   onSnapshot,
@@ -10,10 +11,12 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes } from "firebase/storage";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
 import { deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
+import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, DEFAULT_WELCOME } from "../lib/defaults";
 import { errorText, formatTime } from "../lib/format";
 import {
   POE_LAB_LABEL,
@@ -35,6 +38,9 @@ type Person = {
 
 export function TeacherBotPage() {
   const { botId = "" } = useParams();
+  const creating = botId === "new";
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [bot, setBot] = useState<(Chatbot & { id: string }) | null>(null);
   const [missing, setMissing] = useState(false);
   const [documents, setDocuments] = useState<Array<BotDocument & { id: string }>>([]);
@@ -73,18 +79,13 @@ export function TeacherBotPage() {
   }, []);
 
   useEffect(() => {
-    if (!bot) return;
-    const stored = bot.model;
-    setModel((current) => {
-      if (current && current.toLowerCase() !== stored.toLowerCase() && current.toLowerCase() !== "claude-sonnet-4.6") {
-        return current;
-      }
-      return selectedModelValue(stored, models);
-    });
-  }, [bot, models]);
+    const stored = creating ? DEFAULT_MODEL : bot?.model;
+    if (!stored) return;
+    setModel(selectedModelValue(stored, models));
+  }, [creating, bot?.id, bot?.model, models]);
 
   useEffect(() => {
-    if (!db || !botId) return;
+    if (!db || !botId || creating) return;
     return onSnapshot(
       doc(db, "chatbots", botId),
       (snap) => {
@@ -104,21 +105,21 @@ export function TeacherBotPage() {
   }, [botId]);
 
   useEffect(() => {
-    if (!db || !botId) return;
+    if (!db || !botId || creating) return;
     return onSnapshot(query(collection(db, "chatbots", botId, "documents"), orderBy("createdAt", "desc")), (snap) => {
       setDocuments(snap.docs.map((item) => ({ id: item.id, ...(item.data() as BotDocument) })));
     });
   }, [botId]);
 
   useEffect(() => {
-    if (!db || !botId) return;
+    if (!db || !botId || creating) return;
     return onSnapshot(collection(db, "chatbots", botId, "members"), (snap) => {
       setMembers(snap.docs.map((item) => ({ id: item.id, ...(item.data() as Member) })));
     });
   }, [botId]);
 
   useEffect(() => {
-    if (!db || !botId) return;
+    if (!db || !botId || creating) return;
     return onSnapshot(collection(db, "chatbots", botId, "conversations"), (snap) => {
       setConversations(snap.docs.map((item) => ({ id: item.id, ...(item.data() as ConversationMeta) })));
     });
@@ -158,19 +159,36 @@ export function TeacherBotPage() {
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!db || !bot) return;
+    if (!db || !user) return;
     const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const next = {
+      name,
+      model: String(form.get("model") ?? "").trim() || DEFAULT_MODEL,
+      systemPrompt: String(form.get("systemPrompt") ?? ""),
+      welcomeMessage: String(form.get("welcomeMessage") ?? ""),
+      ragEnabled: form.get("ragEnabled") === "on",
+      updatedAt: serverTimestamp(),
+    };
+    if (!name) return;
     setBusy(true);
     setMessage("");
     try {
-      await updateDoc(doc(db, "chatbots", bot.id), {
-        name: String(form.get("name") ?? "").trim(),
-        model: String(form.get("model") ?? "").trim(),
-        systemPrompt: String(form.get("systemPrompt") ?? ""),
-        welcomeMessage: String(form.get("welcomeMessage") ?? ""),
-        ragEnabled: form.get("ragEnabled") === "on",
-        updatedAt: serverTimestamp(),
-      });
+      if (creating) {
+        const email = (user.email ?? "").toLowerCase();
+        if (!email) throw new Error("這個帳號沒有電郵，無法建立機械人");
+        const created = await addDoc(collection(db, "chatbots"), {
+          ...next,
+          ownerId: user.uid,
+          ownerEmail: email,
+          disabled: false,
+          createdAt: serverTimestamp(),
+        });
+        navigate(`/teacher/bots/${created.id}`, { replace: true });
+        return;
+      }
+      if (!bot) return;
+      await updateDoc(doc(db, "chatbots", bot.id), next);
       setMessage("已儲存設定");
     } catch (error) {
       setMessage(errorText(error));
@@ -247,7 +265,7 @@ export function TeacherBotPage() {
     }
   }
 
-  if (missing) {
+  if (!creating && missing) {
     return (
       <Layout>
         <p className="notice">找不到這個聊天機械人。</p>
@@ -255,7 +273,7 @@ export function TeacherBotPage() {
     );
   }
 
-  if (!bot) {
+  if (!creating && !bot) {
     return (
       <Layout>
         <p className="muted">正在載入…</p>
@@ -263,6 +281,17 @@ export function TeacherBotPage() {
     );
   }
 
+  const shown = bot ?? {
+    id: "new",
+    ownerId: user?.uid ?? "",
+    ownerEmail: (user?.email ?? "").toLowerCase(),
+    name: "",
+    model: DEFAULT_MODEL,
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    welcomeMessage: DEFAULT_WELCOME,
+    ragEnabled: false,
+    disabled: false,
+  };
   const selected = people.find((person) => person.uid === selectedUid);
 
   return (
@@ -273,23 +302,23 @@ export function TeacherBotPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">聊天機械人</p>
-          <h1>{bot.name}</h1>
+          <h1>{creating ? "新聊天機械人" : shown.name}</h1>
         </div>
-        {bot.disabled ? <span className="pill warn">管理員已停用</span> : null}
+        {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
       </div>
       {message ? <p className="notice">{message}</p> : null}
 
-      <form key={bot.id} className="panel stack" onSubmit={(event) => void saveSettings(event)}>
+      <form key={shown.id} className="panel stack" onSubmit={(event) => void saveSettings(event)}>
         <h2>設定</h2>
         <label>
-          名稱
-          <input name="name" defaultValue={bot.name} maxLength={80} required />
+          機械人名稱
+          <input name="name" defaultValue={shown.name} maxLength={80} required />
         </label>
         <label>
           AI模型
           <select
             name="model"
-            value={model || selectedModelValue(bot.model, models)}
+            value={model || selectedModelValue(shown.model, models)}
             onChange={(event) => setModel(event.target.value)}
             required
           >
@@ -312,21 +341,24 @@ export function TeacherBotPage() {
         )}
         <label>
           系統提示詞
-          <textarea name="systemPrompt" defaultValue={bot.systemPrompt} maxLength={8000} rows={6} />
+          <textarea name="systemPrompt" defaultValue={shown.systemPrompt} maxLength={8000} rows={6} />
         </label>
         <label>
           歡迎詞
-          <textarea name="welcomeMessage" defaultValue={bot.welcomeMessage} maxLength={2000} rows={3} />
+          <textarea name="welcomeMessage" defaultValue={shown.welcomeMessage} maxLength={2000} rows={3} />
         </label>
         <label className="check">
-          <input name="ragEnabled" type="checkbox" defaultChecked={bot.ragEnabled} />
+          <input name="ragEnabled" type="checkbox" defaultChecked={shown.ragEnabled} />
           回答時使用已上傳的參考資料
         </label>
         <button type="submit" className="button" disabled={busy}>
-          儲存設定
+          {creating ? "建立機械人" : "儲存設定"}
         </button>
       </form>
 
+      {creating ? <p className="muted">建立後可以上傳參考資料和邀請學生。</p> : null}
+
+      {creating ? null : <>
       <section className="panel stack">
         <h2>參考資料</h2>
         <label className="file">
@@ -414,6 +446,7 @@ export function TeacherBotPage() {
           </div>
         </div>
       </section>
+      </>}
     </Layout>
   );
 }
