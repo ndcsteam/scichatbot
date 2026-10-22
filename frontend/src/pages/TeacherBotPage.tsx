@@ -15,6 +15,7 @@ import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
 import { deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
 import { errorText, formatTime } from "../lib/format";
+import { POE_LAB_LABEL, chatModels, groupPoeModels, loadPoeModels, type PoeModelChoice } from "../lib/poeModels";
 import type { BotDocument, Chatbot, ChatMessage, ConversationMeta, Member } from "../types";
 
 type Person = {
@@ -36,11 +37,44 @@ export function TeacherBotPage() {
   const [message, setMessage] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  const [models, setModels] = useState<PoeModelChoice[]>([]);
+  const [modelsNote, setModelsNote] = useState("");
+  const [model, setModel] = useState("");
 
   useEffect(() => {
     setSelectedUid("");
     setMessage("");
   }, [botId]);
+
+  useEffect(() => {
+    let active = true;
+    void loadPoeModels()
+      .then((items) => {
+        if (!active) return;
+        setModels(items);
+        setModelsNote("");
+      })
+      .catch(() => {
+        if (!active) return;
+        setModels(chatModels(null));
+        setModelsNote("暫時無法讀取完整模型清單，先顯示常用模型。");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!bot) return;
+    const stored = bot.model;
+    setModel((current) => {
+      const source = current && current.toLowerCase() !== stored.toLowerCase() ? current : stored;
+      const match = models.find(
+        (item) => item.label.toLowerCase() === source.toLowerCase() || item.id.toLowerCase() === source.toLowerCase(),
+      );
+      return match?.label || source;
+    });
+  }, [bot, models]);
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -221,6 +255,8 @@ export function TeacherBotPage() {
   }
 
   const selected = people.find((person) => person.uid === selectedUid);
+  const modelGroups = useMemo(() => groupPoeModels(models), [models]);
+  const modelKnown = models.some((item) => item.label === model || item.id.toLowerCase() === model.toLowerCase());
 
   return (
     <Layout>
@@ -244,9 +280,20 @@ export function TeacherBotPage() {
         </label>
         <label>
           Poe 模型
-          <input name="model" defaultValue={bot.model} maxLength={100} required />
+          <select name="model" value={model} onChange={(event) => setModel(event.target.value)} required>
+            {!modelKnown && model ? <option value={model}>{model}</option> : null}
+            {modelGroups.map(([owner, items]) => (
+              <optgroup key={owner} label={POE_LAB_LABEL[owner] ?? owner}>
+                {items.map((item) => (
+                  <option key={item.id} value={item.label}>
+                    {item.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </label>
-        <p className="muted">填寫 Poe 公開 bot 名稱，例如 Claude-Sonnet-4.6。</p>
+        {modelsNote ? <p className="muted">{modelsNote}</p> : <p className="muted">選擇這個機械人回答時使用的 Poe 模型。</p>}
         <label>
           系統提示詞
           <textarea name="systemPrompt" defaultValue={bot.systemPrompt} maxLength={8000} rows={6} />
