@@ -1,6 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
-import type { Role } from "../types";
+import type { RegistrationMode, Role } from "../types";
 
 async function call<T>(name: string, data?: object): Promise<T> {
   if (!functions) throw new Error("尚未設定 Firebase");
@@ -11,6 +11,10 @@ async function call<T>(name: string, data?: object): Promise<T> {
 
 export function syncUser() {
   return call<{ role: Role; disabled: boolean; displayName: string; email: string }>("syncUser");
+}
+
+export function setRegistrationMode(mode: RegistrationMode) {
+  return call<{ mode: RegistrationMode }>("setRegistrationMode", { mode });
 }
 
 export function setUserRole(uid: string, role: Role) {

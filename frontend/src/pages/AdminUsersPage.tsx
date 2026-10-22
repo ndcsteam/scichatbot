@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
+import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
-import { setUserDisabled, setUserRole } from "../lib/callables";
+import { setRegistrationMode, setUserDisabled, setUserRole } from "../lib/callables";
 import { ROLE_LABEL } from "../lib/defaults";
 import { errorText, formatTime } from "../lib/format";
-import type { Role, UserProfile } from "../types";
+import type { RegistrationMode, Role, UserProfile } from "../types";
 
 type Row = UserProfile & { id: string };
 
@@ -18,6 +18,10 @@ export function AdminUsersPage() {
   const [drafts, setDrafts] = useState<Record<string, Role>>({});
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [mode, setMode] = useState<RegistrationMode>("manual");
+  const [modeReady, setModeReady] = useState(false);
+  const [modeBusy, setModeBusy] = useState(false);
+  const modeBusyRef = useRef(false);
 
   useEffect(() => {
     if (!db) return;
@@ -25,6 +29,39 @@ export function AdminUsersPage() {
       setRows(snap.docs.map((item) => ({ id: item.id, ...(item.data() as UserProfile) })));
     });
   }, []);
+
+  useEffect(() => {
+    if (!db) return;
+    return onSnapshot(
+      doc(db, "settings", "registration"),
+      (snap) => {
+        if (modeBusyRef.current) return;
+        setMode(snap.data()?.mode === "auto-student" ? "auto-student" : "manual");
+        setModeReady(true);
+      },
+      () => {
+        setModeReady(true);
+      },
+    );
+  }, []);
+
+  async function chooseMode(next: RegistrationMode) {
+    if (!modeReady || modeBusy || next === mode) return;
+    const previous = mode;
+    modeBusyRef.current = true;
+    setMode(next);
+    setModeBusy(true);
+    setMessage("");
+    try {
+      await setRegistrationMode(next);
+    } catch (error) {
+      setMode(previous);
+      setMessage(errorText(error));
+    } finally {
+      modeBusyRef.current = false;
+      setModeBusy(false);
+    }
+  }
 
   async function saveRole(row: Row) {
     const role = drafts[row.id] ?? row.role;
@@ -65,7 +102,37 @@ export function AdminUsersPage() {
           <h1>帳號</h1>
         </div>
       </div>
-      <p className="muted">已用學校 Google 登入過的帳號會出現在這裡。指派角色後，對方重新整理頁面即可使用。</p>
+      <p className="muted">已用學校 Google 登入過的帳號會出現在這裡。更改角色後，對方重新整理頁面即可使用。</p>
+      <section className="panel">
+        <h2>新帳號登記</h2>
+        <p className="muted">
+          任何管理員都可以更改。只影響之後第一次登入的帳號，清單裡現有帳號的角色維持不變。事先指定的管理員電郵仍然會在首次登入時成為管理員。
+        </p>
+        <fieldset className="choice-list" disabled={!modeReady || modeBusy}>
+          <label className="choice">
+            <input
+              type="radio"
+              name="registration-mode"
+              value="manual"
+              checked={mode === "manual"}
+              onChange={() => void chooseMode("manual")}
+            />
+            <strong>手動批核</strong>
+            <span>新帳號停在待指派，要由管理員指定老師或學生。</span>
+          </label>
+          <label className="choice">
+            <input
+              type="radio"
+              name="registration-mode"
+              value="auto-student"
+              checked={mode === "auto-student"}
+              onChange={() => void chooseMode("auto-student")}
+            />
+            <strong>自動設為學生</strong>
+            <span>新帳號第一次登入就成為學生，可以立即使用。</span>
+          </label>
+        </fieldset>
+      </section>
       {message ? <p className="notice">{message}</p> : null}
       <div className="table-wrap">
         <table className="table">

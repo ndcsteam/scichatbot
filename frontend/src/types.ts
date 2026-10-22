@@ -2,6 +2,8 @@ import type { Timestamp } from "firebase/firestore";
 
 export type Role = "pending" | "admin" | "teacher" | "student";
 
+export type RegistrationMode = "manual" | "auto-student";
+
 export type UserProfile = {
   email: string;
   displayName: string;

@@ -9,6 +9,7 @@ import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
 import { buildContext, rankChunks } from "./rag.js";
+import { registrationModeFrom, roleForNewAccount, type RegistrationMode } from "./registration.js";
 
 initializeApp();
 
@@ -47,7 +48,7 @@ export const syncUser = onCall(callOptions, async (request) => {
   const photoURL = stringClaim(request.auth?.token.picture);
 
   if (!snap.exists) {
-    const role: Role = bootstrap.includes(email) ? "admin" : "pending";
+    const role: Role = roleForNewAccount(email, bootstrap, await registrationMode());
     await ref.set({
       email,
       displayName,
@@ -78,6 +79,20 @@ export const syncUser = onCall(callOptions, async (request) => {
   );
   await auth.setCustomUserClaims(uid, { role });
   return { role, disabled: false, displayName, email };
+});
+
+export const setRegistrationMode = onCall(callOptions, async (request) => {
+  await requireAdmin(request.auth?.uid, request.auth?.token.role);
+  const mode = requireRegistrationMode(request.data?.mode);
+  await db.collection("settings").doc("registration").set(
+    {
+      mode,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: request.auth?.uid ?? "",
+    },
+    { merge: true },
+  );
+  return { mode };
 });
 
 export const setUserRole = onCall(callOptions, async (request) => {
@@ -419,6 +434,16 @@ function requireString(value: unknown, message: string): string {
 
 function stringClaim(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+async function registrationMode(): Promise<RegistrationMode> {
+  const snap = await db.collection("settings").doc("registration").get();
+  return registrationModeFrom(snap.data()?.mode);
+}
+
+function requireRegistrationMode(value: unknown): RegistrationMode {
+  if (value === "manual" || value === "auto-student") return value;
+  throw new HttpsError("invalid-argument", "請選擇手動批核或自動設為學生");
 }
 
 function asRole(value: unknown): Role {

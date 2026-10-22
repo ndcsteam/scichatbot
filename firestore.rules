@@ -68,6 +68,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /settings/{settingId} {
+      allow read: if isAdmin() && settingId == "registration";
+      allow write: if false;
+    }
+
     match /chatbots/{botId} {
       allow read: if isAdmin()
         || (isTeacher() && resource.data.ownerId == request.auth.uid)

@@ -180,6 +180,27 @@ textarea { resize: vertical; }
 .check { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; }
 .check input { width: auto; }
 
+.choice-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: 0;
+}
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.7rem;
+  align-items: start;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+}
+.choice input { width: auto; margin-top: 0.2rem; grid-row: span 2; }
+.choice span { color: var(--muted); font-weight: 400; }
+.choice-list:disabled { opacity: 0.7; }
+
 .inline-form {
   display: flex;
   gap: 0.75rem;
