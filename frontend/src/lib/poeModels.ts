@@ -6,6 +6,9 @@ export type PoeModelChoice = {
 
 const PRICE_BAND = 2;
 const GOOGLE_MODEL_ID = "gemini-3.8-flash";
+const LEGACY_DEFAULTS = new Set(["claude-sonnet-4.6"]);
+
+export const DEFAULT_MODEL_LABEL = "Gemini 3.8 Flash";
 
 const OWNER_ORDER = ["Google", "Anthropic", "OpenAI", "XAI", "Mistral", "DeepSeek", "Meta", "Alibaba", "Moonshot AI"];
 
@@ -79,6 +82,23 @@ export function chatModels(body: unknown): PoeModelChoice[] {
     if (best) chosen.set(owner, { id: best.id, label: best.label, owner: best.owner });
   }
   return [...chosen.values()].sort((left, right) => ownerRank(left.owner) - ownerRank(right.owner) || left.label.localeCompare(right.label));
+}
+
+export function modelOptionLabel(model: PoeModelChoice): string {
+  if (model.id.toLowerCase() === GOOGLE_MODEL_ID || model.label.toLowerCase() === "gemini-3.8-flash") {
+    return DEFAULT_MODEL_LABEL;
+  }
+  return model.label;
+}
+
+export function selectedModelValue(stored: string, models: PoeModelChoice[]): string {
+  const gemini = models.find((item) => item.id.toLowerCase() === GOOGLE_MODEL_ID)?.label ?? "Gemini-3.8-Flash";
+  const value = stored.trim();
+  if (!value || LEGACY_DEFAULTS.has(value.toLowerCase())) return gemini;
+  const match = models.find(
+    (item) => item.label.toLowerCase() === value.toLowerCase() || item.id.toLowerCase() === value.toLowerCase(),
+  );
+  return match?.label ?? value;
 }
 
 export function groupPoeModels(models: PoeModelChoice[]): Array<[string, PoeModelChoice[]]> {

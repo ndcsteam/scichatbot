@@ -15,7 +15,15 @@ import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
 import { deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
 import { errorText, formatTime } from "../lib/format";
-import { POE_LAB_LABEL, chatModels, groupPoeModels, loadPoeModels, type PoeModelChoice } from "../lib/poeModels";
+import {
+  POE_LAB_LABEL,
+  chatModels,
+  groupPoeModels,
+  loadPoeModels,
+  modelOptionLabel,
+  selectedModelValue,
+  type PoeModelChoice,
+} from "../lib/poeModels";
 import type { BotDocument, Chatbot, ChatMessage, ConversationMeta, Member } from "../types";
 
 type Person = {
@@ -68,11 +76,10 @@ export function TeacherBotPage() {
     if (!bot) return;
     const stored = bot.model;
     setModel((current) => {
-      const source = current && current.toLowerCase() !== stored.toLowerCase() ? current : stored;
-      const match = models.find(
-        (item) => item.label.toLowerCase() === source.toLowerCase() || item.id.toLowerCase() === source.toLowerCase(),
-      );
-      return match?.label || source;
+      if (current && current.toLowerCase() !== stored.toLowerCase() && current.toLowerCase() !== "claude-sonnet-4.6") {
+        return current;
+      }
+      return selectedModelValue(stored, models);
     });
   }, [bot, models]);
 
@@ -280,13 +287,18 @@ export function TeacherBotPage() {
         </label>
         <label>
           AI模型
-          <select name="model" value={model} onChange={(event) => setModel(event.target.value)} required>
+          <select
+            name="model"
+            value={model || selectedModelValue(bot.model, models)}
+            onChange={(event) => setModel(event.target.value)}
+            required
+          >
             {!modelKnown && model ? <option value={model}>{model}</option> : null}
             {modelGroups.map(([owner, items]) => (
               <optgroup key={owner} label={POE_LAB_LABEL[owner] ?? owner}>
                 {items.map((item) => (
                   <option key={item.id} value={item.label}>
-                    {item.label}
+                    {modelOptionLabel(item)}
                   </option>
                 ))}
               </optgroup>
@@ -296,7 +308,7 @@ export function TeacherBotPage() {
         {modelsNote ? (
           <p className="muted">{modelsNote}</p>
         ) : (
-          <p className="muted">Google 使用 Gemini 3.8 Flash。其他供應商各提供一個價錢相近、可以讀圖的模型。</p>
+          <p className="muted">預設是 Gemini 3.8 Flash。其他供應商各提供一個價錢相近、可以讀圖的模型。</p>
         )}
         <label>
           系統提示詞
