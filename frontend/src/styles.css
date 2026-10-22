@@ -163,6 +163,14 @@ a { color: var(--forest); }
 .domain-note { color: var(--forest); font-weight: 700; }
 
 .panel { padding: 1.25rem; margin: 1rem 0; }
+.settings-block {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.2rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+.settings-block h3 { margin: 0; font-size: 1.05rem; }
 .panel.narrow { width: min(640px, 100%); }
 .stack { display: grid; gap: 0.8rem; }
 

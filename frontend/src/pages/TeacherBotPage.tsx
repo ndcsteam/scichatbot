@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   addDoc,
   collection,
@@ -11,7 +11,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes } from "firebase/storage";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
@@ -40,6 +40,7 @@ export function TeacherBotPage() {
   const { botId = "" } = useParams();
   const creating = botId === "new";
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [bot, setBot] = useState<(Chatbot & { id: string }) | null>(null);
   const [missing, setMissing] = useState(false);
@@ -54,11 +55,17 @@ export function TeacherBotPage() {
   const [models, setModels] = useState<PoeModelChoice[]>([]);
   const [modelsNote, setModelsNote] = useState("");
   const [model, setModel] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setSelectedUid("");
     setMessage("");
   }, [botId]);
+
+  useEffect(() => {
+    const notice = (location.state as { notice?: string } | null)?.notice;
+    if (notice) setMessage(notice);
+  }, [location.state]);
 
   useEffect(() => {
     let active = true;
@@ -157,38 +164,48 @@ export function TeacherBotPage() {
   const modelGroups = useMemo(() => groupPoeModels(models), [models]);
   const modelKnown = models.some((item) => item.label === model || item.id.toLowerCase() === model.toLowerCase());
 
+  function settingsFrom(form: HTMLFormElement) {
+    const data = new FormData(form);
+    return {
+      name: String(data.get("name") ?? "").trim(),
+      model: String(data.get("model") ?? "").trim() || DEFAULT_MODEL,
+      systemPrompt: String(data.get("systemPrompt") ?? ""),
+      welcomeMessage: String(data.get("welcomeMessage") ?? ""),
+      ragEnabled: data.get("ragEnabled") === "on",
+    };
+  }
+
+  async function createFromForm(form: HTMLFormElement) {
+    if (!db || !user) throw new Error("尚未登入");
+    const email = (user.email ?? "").toLowerCase();
+    if (!email) throw new Error("這個帳號沒有電郵，無法建立機械人");
+    const next = settingsFrom(form);
+    if (!next.name) throw new Error("請先填寫機械人名稱");
+    return addDoc(collection(db, "chatbots"), {
+      ...next,
+      ownerId: user.uid,
+      ownerEmail: email,
+      disabled: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db || !user) return;
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get("name") ?? "").trim();
-    const next = {
-      name,
-      model: String(form.get("model") ?? "").trim() || DEFAULT_MODEL,
-      systemPrompt: String(form.get("systemPrompt") ?? ""),
-      welcomeMessage: String(form.get("welcomeMessage") ?? ""),
-      ragEnabled: form.get("ragEnabled") === "on",
-      updatedAt: serverTimestamp(),
-    };
-    if (!name) return;
+    const next = settingsFrom(event.currentTarget);
+    if (!next.name) return;
     setBusy(true);
     setMessage("");
     try {
       if (creating) {
-        const email = (user.email ?? "").toLowerCase();
-        if (!email) throw new Error("這個帳號沒有電郵，無法建立機械人");
-        const created = await addDoc(collection(db, "chatbots"), {
-          ...next,
-          ownerId: user.uid,
-          ownerEmail: email,
-          disabled: false,
-          createdAt: serverTimestamp(),
-        });
+        const created = await createFromForm(event.currentTarget);
         navigate(`/teacher/bots/${created.id}`, { replace: true });
         return;
       }
       if (!bot) return;
-      await updateDoc(doc(db, "chatbots", bot.id), next);
+      await updateDoc(doc(db, "chatbots", bot.id), { ...next, updatedAt: serverTimestamp() });
       setMessage("已儲存設定");
     } catch (error) {
       setMessage(errorText(error));
@@ -198,16 +215,22 @@ export function TeacherBotPage() {
   }
 
   async function uploadFile(file: File) {
-    if (!db || !storage || !bot) return;
+    if (!db || !storage || !user || !formRef.current) return;
     if (!/\.(txt|md|pdf)$/i.test(file.name) || file.name.includes("/") || file.name.includes("\\")) {
       setMessage("只可上傳 txt、md 或 pdf，檔名不可包含斜線");
       return;
     }
     setBusy(true);
     setMessage("");
-    const docRef = doc(collection(db, "chatbots", bot.id, "documents"));
-    const storagePath = `chatbots/${bot.id}/docs/${docRef.id}/${file.name}`;
+    let targetId = bot?.id ?? "";
     try {
+      if (creating) {
+        const created = await createFromForm(formRef.current);
+        targetId = created.id;
+      }
+      if (!targetId) return;
+      const docRef = doc(collection(db, "chatbots", targetId, "documents"));
+      const storagePath = `chatbots/${targetId}/docs/${docRef.id}/${file.name}`;
       await setDoc(docRef, {
         fileName: file.name,
         storagePath,
@@ -215,9 +238,13 @@ export function TeacherBotPage() {
         createdAt: serverTimestamp(),
       });
       await uploadBytes(ref(storage, storagePath), file);
-      setMessage("已上傳，系統正在整理參考資料");
+      const notice = "已上傳，系統正在整理參考資料";
+      if (creating) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
+      else setMessage(notice);
     } catch (error) {
-      setMessage(errorText(error));
+      const notice = errorText(error);
+      if (creating && targetId) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
+      else setMessage(notice);
     } finally {
       setBusy(false);
     }
@@ -332,7 +359,7 @@ export function TeacherBotPage() {
       </div>
       {message ? <p className="notice">{message}</p> : null}
 
-      <form key={shown.id} className="panel stack" onSubmit={(event) => void saveSettings(event)}>
+      <form ref={formRef} key={shown.id} className="panel stack" onSubmit={(event) => void saveSettings(event)}>
         <h2>設定</h2>
         <label>
           機械人名稱
@@ -371,58 +398,58 @@ export function TeacherBotPage() {
           歡迎詞
           <textarea name="welcomeMessage" defaultValue={shown.welcomeMessage} maxLength={2000} rows={3} />
         </label>
-        <label className="check">
-          <input name="ragEnabled" type="checkbox" defaultChecked={shown.ragEnabled} />
-          回答時使用已上傳的參考資料
-        </label>
+        <div className="settings-block">
+          <h3>參考資料</h3>
+          <label className="check">
+            <input name="ragEnabled" type="checkbox" defaultChecked={shown.ragEnabled} />
+            回答時使用已上傳的參考資料
+          </label>
+          <label className="file">
+            上傳 txt、md 或 pdf
+            <input
+              type="file"
+              accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void uploadFile(file);
+              }}
+            />
+          </label>
+          {creating ? <p className="muted">選取檔案後會先建立機械人，再上傳這份參考資料。</p> : null}
+          {documents.length === 0 ? (
+            <p className="muted">尚未上傳文件。</p>
+          ) : (
+            <ul className="plain-list">
+              {documents.map((item) => (
+                <li key={item.id}>
+                  <div>
+                    <strong>{item.fileName}</strong>
+                    <span className="muted">
+                      {item.status === "ready"
+                        ? `可用，${item.chunkCount ?? 0} 段`
+                        : item.status === "error"
+                          ? `失敗：${item.errorMessage || "無法讀取"}`
+                          : "處理中"}
+                    </span>
+                  </div>
+                  <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeDoc(item.id)}>
+                    刪除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <button type="submit" className="button" disabled={busy}>
           {creating ? "建立機械人" : "儲存設定"}
         </button>
       </form>
 
-      {creating ? <p className="muted">建立後可以上傳參考資料和邀請學生。</p> : null}
+      {creating ? <p className="muted">建立後可以邀請學生。</p> : null}
 
       {creating ? null : <>
-      <section className="panel stack">
-        <h2>參考資料</h2>
-        <label className="file">
-          上傳 txt、md 或 pdf
-          <input
-            type="file"
-            accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
-            disabled={busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void uploadFile(file);
-            }}
-          />
-        </label>
-        {documents.length === 0 ? (
-          <p className="muted">尚未上傳文件。</p>
-        ) : (
-          <ul className="plain-list">
-            {documents.map((item) => (
-              <li key={item.id}>
-                <div>
-                  <strong>{item.fileName}</strong>
-                  <span className="muted">
-                    {item.status === "ready"
-                      ? `可用，${item.chunkCount ?? 0} 段`
-                      : item.status === "error"
-                        ? `失敗：${item.errorMessage || "無法讀取"}`
-                        : "處理中"}
-                  </span>
-                </div>
-                <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeDoc(item.id)}>
-                  刪除
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
       <section className="panel stack">
         <h2>學生與對話紀錄</h2>
         <form className="inline-form" onSubmit={(event) => void invite(event)}>
