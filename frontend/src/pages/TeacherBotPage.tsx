@@ -15,9 +15,9 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
-import { deleteChatbot, deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
+import { deleteChatbot, deleteDocument } from "../lib/callables";
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, DEFAULT_WELCOME } from "../lib/defaults";
-import { errorText, formatTime } from "../lib/format";
+import { errorText } from "../lib/format";
 import {
   POE_LAB_LABEL,
   chatModels,
@@ -27,14 +27,7 @@ import {
   selectedModelValue,
   type PoeModelChoice,
 } from "../lib/poeModels";
-import type { BotDocument, Chatbot, ChatMessage, ConversationMeta, Member } from "../types";
-
-type Person = {
-  uid: string;
-  email: string;
-  member: boolean;
-  lastMessage?: string;
-};
+import type { BotDocument, Chatbot } from "../types";
 
 export function TeacherBotPage() {
   const { botId = "" } = useParams();
@@ -46,12 +39,7 @@ export function TeacherBotPage() {
   const [missing, setMissing] = useState(false);
   const [documents, setDocuments] = useState<Array<BotDocument & { id: string }>>([]);
   const [documentsReady, setDocumentsReady] = useState(false);
-  const [members, setMembers] = useState<Array<Member & { id: string }>>([]);
-  const [conversations, setConversations] = useState<Array<ConversationMeta & { id: string }>>([]);
-  const [selectedUid, setSelectedUid] = useState("");
-  const [messages, setMessages] = useState<Array<ChatMessage & { id: string }>>([]);
   const [message, setMessage] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [models, setModels] = useState<PoeModelChoice[]>([]);
   const [modelsNote, setModelsNote] = useState("");
@@ -59,7 +47,6 @@ export function TeacherBotPage() {
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    setSelectedUid("");
     setMessage("");
   }, [botId]);
 
@@ -129,49 +116,6 @@ export function TeacherBotPage() {
     void updateDoc(doc(db, "chatbots", bot.id), { ragEnabled: shouldUse }).catch(() => undefined);
   }, [bot, creating, documents.length, documentsReady]);
 
-  useEffect(() => {
-    if (!db || !botId || creating) return;
-    return onSnapshot(collection(db, "chatbots", botId, "members"), (snap) => {
-      setMembers(snap.docs.map((item) => ({ id: item.id, ...(item.data() as Member) })));
-    });
-  }, [botId]);
-
-  useEffect(() => {
-    if (!db || !botId || creating) return;
-    return onSnapshot(collection(db, "chatbots", botId, "conversations"), (snap) => {
-      setConversations(snap.docs.map((item) => ({ id: item.id, ...(item.data() as ConversationMeta) })));
-    });
-  }, [botId]);
-
-  useEffect(() => {
-    if (!db || !botId || !selectedUid) {
-      setMessages([]);
-      return;
-    }
-    return onSnapshot(
-      query(collection(db, "chatbots", botId, "conversations", selectedUid, "messages"), orderBy("seq", "asc")),
-      (snap) => {
-        setMessages(snap.docs.map((item) => ({ id: item.id, ...(item.data() as ChatMessage) })));
-      },
-    );
-  }, [botId, selectedUid]);
-
-  const people = useMemo(() => {
-    const map = new Map<string, Person>();
-    for (const member of members) {
-      map.set(member.studentUid, { uid: member.studentUid, email: member.email, member: true });
-    }
-    for (const conversation of conversations) {
-      const current = map.get(conversation.studentUid);
-      map.set(conversation.studentUid, {
-        uid: conversation.studentUid,
-        email: current?.email || conversation.email,
-        member: current?.member ?? false,
-        lastMessage: conversation.lastMessage,
-      });
-    }
-    return [...map.values()].sort((a, b) => a.email.localeCompare(b.email, "zh-Hant"));
-  }, [conversations, members]);
   const modelGroups = useMemo(() => groupPoeModels(models), [models]);
   const modelKnown = models.some((item) => item.label === model || item.id.toLowerCase() === model.toLowerCase());
 
@@ -221,7 +165,7 @@ export function TeacherBotPage() {
         ragEnabled: documents.length > 0,
         updatedAt: serverTimestamp(),
       });
-      setMessage("已儲存設定");
+      navigate(`/teacher/bots/${bot.id}/students`, { state: { notice: "已儲存設定" } });
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -285,22 +229,6 @@ export function TeacherBotPage() {
     }
   }
 
-  async function invite(event: FormEvent) {
-    event.preventDefault();
-    if (!bot) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await inviteStudent(bot.id, inviteEmail.trim());
-      setInviteEmail("");
-      setMessage("已邀請學生");
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function removeBot() {
     if (!bot) return;
     const confirmed = window.confirm(
@@ -314,19 +242,6 @@ export function TeacherBotPage() {
       navigate("/teacher");
     } catch (error) {
       setMessage(errorText(error));
-      setBusy(false);
-    }
-  }
-
-  async function removeMember(studentUid: string) {
-    if (!bot) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await removeStudent(bot.id, studentUid);
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
       setBusy(false);
     }
   }
@@ -358,7 +273,6 @@ export function TeacherBotPage() {
     ragEnabled: false,
     disabled: false,
   };
-  const selected = people.find((person) => person.uid === selectedUid);
   const organizing = documents.some((item) => item.status !== "ready" && item.status !== "error");
 
   return (
@@ -373,6 +287,11 @@ export function TeacherBotPage() {
         </div>
         <div className="actions">
           {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
+          {creating ? null : (
+            <Link className="button secondary" to={`/teacher/bots/${shown.id}/students`}>
+              學生管理
+            </Link>
+          )}
           {creating ? null : (
             <button type="button" className="button danger" disabled={busy} onClick={() => void removeBot()}>
               刪除機械人
@@ -462,58 +381,6 @@ export function TeacherBotPage() {
           {creating ? "建立機械人" : "儲存設定"}
         </button>
       </form>
-
-      {creating ? <p className="muted">建立後可以邀請學生。</p> : null}
-
-      {creating ? null : <>
-      <section className="panel stack">
-        <h2>學生與對話紀錄</h2>
-        <form className="inline-form" onSubmit={(event) => void invite(event)}>
-          <label>
-            學生學校電郵
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
-              placeholder="student@school.edu.hk"
-              required
-            />
-          </label>
-          <button type="submit" className="button" disabled={busy}>
-            邀請
-          </button>
-        </form>
-        <div className="split">
-          <ul className="plain-list">
-            {people.length === 0 ? <li>尚未有學生。</li> : null}
-            {people.map((person) => (
-              <li key={person.uid}>
-                <button type="button" className={person.uid === selectedUid ? "text-button active" : "text-button"} onClick={() => setSelectedUid(person.uid)}>
-                  <strong>{person.email}</strong>
-                  <span className="muted">{person.member ? "已加入" : "已退出，紀錄仍保留"}</span>
-                </button>
-                {person.member ? (
-                  <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeMember(person.uid)}>
-                    移除
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <div className="transcript compact">
-            {!selected ? <p className="muted">選擇學生以查看對話。</p> : null}
-            {selected && messages.length === 0 ? <p className="muted">這位學生尚未開始對話。</p> : null}
-            {messages.map((item) => (
-              <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
-                <header>{item.role === "user" ? "學生" : "機械人"}</header>
-                <p>{item.content}</p>
-                <time>{formatTime(item.createdAt)}</time>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-      </>}
     </Layout>
   );
 }

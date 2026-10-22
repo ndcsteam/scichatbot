@@ -10,6 +10,7 @@ import { StudentChatPage } from "./pages/StudentChatPage";
 import { StudentHomePage } from "./pages/StudentHomePage";
 import { TeacherBotPage } from "./pages/TeacherBotPage";
 import { TeacherHomePage } from "./pages/TeacherHomePage";
+import { TeacherStudentsPage } from "./pages/TeacherStudentsPage";
 
 function HomeRedirect() {
   const { ready, user, role } = useAuth();
@@ -52,6 +53,14 @@ export function App() {
         element={
           <RequireRole role="teacher">
             <TeacherHomePage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/teacher/bots/:botId/students"
+        element={
+          <RequireRole role="teacher">
+            <TeacherStudentsPage />
           </RequireRole>
         }
       />
