@@ -127,6 +127,30 @@ export const setUserDisabled = onCall(callOptions, async (request) => {
   return { ok: true };
 });
 
+export const deleteStudent = onCall({ ...callOptions, timeoutSeconds: 120 }, async (request) => {
+  await requireAdmin(request.auth?.uid, request.auth?.token.role);
+  const uid = requireString(request.data?.uid, "缺少學生");
+  if (uid === request.auth?.uid) {
+    throw new HttpsError("failed-precondition", "不能刪除自己的帳號");
+  }
+
+  const ref = db.collection("users").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "找不到這個帳號");
+  if (snap.data()?.role !== "student") {
+    throw new HttpsError("failed-precondition", "只能刪除學生帳號");
+  }
+
+  await deleteStudentRecords(uid);
+  try {
+    await auth.deleteUser(uid);
+  } catch (error) {
+    if (!isMissingAuthUser(error)) throw error;
+  }
+  await ref.delete();
+  return { ok: true };
+});
+
 export const setBotDisabled = onCall(callOptions, async (request) => {
   await requireAdmin(request.auth?.uid, request.auth?.token.role);
   const botId = requireString(request.data?.botId, "缺少聊天機械人");
@@ -405,6 +429,21 @@ async function writeChunks(botId: string, documentId: string, parts: string[]): 
     });
     await batch.commit();
   }
+}
+
+async function deleteStudentRecords(studentUid: string): Promise<void> {
+  const bots = await db.collection("chatbots").get();
+  for (const bot of bots.docs) {
+    const memberRef = bot.ref.collection("members").doc(studentUid);
+    const conversationRef = bot.ref.collection("conversations").doc(studentUid);
+    const [memberSnap, conversationSnap] = await Promise.all([memberRef.get(), conversationRef.get()]);
+    if (memberSnap.exists) await memberRef.delete();
+    if (conversationSnap.exists) await db.recursiveDelete(conversationRef);
+  }
+}
+
+function isMissingAuthUser(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "auth/user-not-found";
 }
 
 async function requireOwnedBot(botId: string, teacherUid: string): Promise<void> {

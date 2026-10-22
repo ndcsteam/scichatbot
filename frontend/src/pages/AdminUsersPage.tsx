@@ -3,7 +3,7 @@ import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore"
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
-import { setRegistrationMode, setUserDisabled, setUserRole } from "../lib/callables";
+import { deleteStudent, setRegistrationMode, setUserDisabled, setUserRole } from "../lib/callables";
 import { ROLE_LABEL } from "../lib/defaults";
 import { errorText, formatTime } from "../lib/format";
 import type { RegistrationMode, Role, UserProfile } from "../types";
@@ -82,6 +82,23 @@ export function AdminUsersPage() {
     }
   }
 
+  async function removeStudentAccount(row: Row) {
+    if (row.role !== "student") return;
+    const confirmed = window.confirm(
+      `確定刪除學生 ${row.displayName}（${row.email}）？邀請紀錄和對話會一併刪除，而且不能復原。`,
+    );
+    if (!confirmed) return;
+    setBusyId(row.id);
+    setMessage("");
+    try {
+      await deleteStudent(row.id);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusyId("");
+    }
+  }
+
   async function toggleDisabled(row: Row) {
     setBusyId(row.id);
     setMessage("");
@@ -102,7 +119,9 @@ export function AdminUsersPage() {
           <h1>帳號</h1>
         </div>
       </div>
-      <p className="muted">已用學校 Google 登入過的帳號會出現在這裡。更改角色後，對方重新整理頁面即可使用。</p>
+      <p className="muted">
+        已用學校 Google 登入過的帳號會出現在這裡。更改角色後，對方重新整理頁面即可使用。刪除學生會一併移除邀請紀錄和對話。
+      </p>
       <section className="panel">
         <h2>新帳號登記</h2>
         <p className="muted">
@@ -194,6 +213,16 @@ export function AdminUsersPage() {
                       >
                         {row.disabled ? "啟用" : "停用"}
                       </button>
+                      {row.role === "student" ? (
+                        <button
+                          type="button"
+                          className="button small danger"
+                          disabled={busyId === row.id}
+                          onClick={() => void removeStudentAccount(row)}
+                        >
+                          刪除
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 );

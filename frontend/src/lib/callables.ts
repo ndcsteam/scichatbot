@@ -25,6 +25,10 @@ export function setUserDisabled(uid: string, disabled: boolean) {
   return call<{ ok: boolean }>("setUserDisabled", { uid, disabled });
 }
 
+export function deleteStudent(uid: string) {
+  return call<{ ok: boolean }>("deleteStudent", { uid });
+}
+
 export function setBotDisabled(botId: string, disabled: boolean) {
   return call<{ ok: boolean }>("setBotDisabled", { botId, disabled });
 }
