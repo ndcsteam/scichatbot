@@ -83,9 +83,9 @@ export function AdminUsersPage() {
   }
 
   async function removeStudentAccount(row: Row) {
-    if (row.role !== "student") return;
+    if (row.role !== "student" && row.role !== "pending") return;
     const confirmed = window.confirm(
-      `確定刪除學生 ${row.displayName}（${row.email}）？邀請紀錄和對話會一併刪除，而且不能復原。`,
+      `確定刪除 ${row.displayName}（${row.email}）？帳號、邀請紀錄和對話會一併刪除，而且不能復原。`,
     );
     if (!confirmed) return;
     setBusyId(row.id);
@@ -120,7 +120,7 @@ export function AdminUsersPage() {
         </div>
       </div>
       <p className="muted">
-        已用學校 Google 登入過的帳號會出現在這裡。更改角色後，對方重新整理頁面即可使用。刪除學生會一併移除邀請紀錄和對話。
+        已用學校 Google 登入過的帳號會出現在這裡。更改角色後，對方重新整理頁面即可使用。待指派和學生帳號右側有刪除按鈕，刪除會一併移除邀請紀錄和對話。
       </p>
       <section className="panel">
         <h2>新帳號登記</h2>
@@ -213,7 +213,7 @@ export function AdminUsersPage() {
                       >
                         {row.disabled ? "啟用" : "停用"}
                       </button>
-                      {row.role === "student" ? (
+                      {row.role === "student" || row.role === "pending" ? (
                         <button
                           type="button"
                           className="button small danger"

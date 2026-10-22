@@ -137,8 +137,9 @@ export const deleteStudent = onCall({ ...callOptions, timeoutSeconds: 120 }, asy
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "找不到這個帳號");
-  if (snap.data()?.role !== "student") {
-    throw new HttpsError("failed-precondition", "只能刪除學生帳號");
+  const role = snap.data()?.role;
+  if (role !== "student" && role !== "pending") {
+    throw new HttpsError("failed-precondition", "只能刪除待指派或學生帳號");
   }
 
   await deleteStudentRecords(uid);
