@@ -63,7 +63,7 @@ export function TeacherHomePage() {
             <li key={row.id} className="bot-row">
               <Link to={`/teacher/bots/${row.id}`} className="bot-card">
                 <strong>{row.name}</strong>
-                <span>{row.disabled ? "已停用" : row.ragEnabled ? "參考資料已啟用" : "參考資料未啟用"}</span>
+                <span>{row.disabled ? "已停用" : row.ragEnabled ? "已上傳參考資料" : "尚未上傳參考資料"}</span>
               </Link>
               <button type="button" className="button danger" disabled={busyId === row.id} onClick={() => void remove(row)}>
                 刪除

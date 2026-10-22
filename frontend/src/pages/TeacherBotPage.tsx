@@ -45,6 +45,7 @@ export function TeacherBotPage() {
   const [bot, setBot] = useState<(Chatbot & { id: string }) | null>(null);
   const [missing, setMissing] = useState(false);
   const [documents, setDocuments] = useState<Array<BotDocument & { id: string }>>([]);
+  const [documentsReady, setDocumentsReady] = useState(false);
   const [members, setMembers] = useState<Array<Member & { id: string }>>([]);
   const [conversations, setConversations] = useState<Array<ConversationMeta & { id: string }>>([]);
   const [selectedUid, setSelectedUid] = useState("");
@@ -112,11 +113,21 @@ export function TeacherBotPage() {
   }, [botId]);
 
   useEffect(() => {
+    setDocuments([]);
+    setDocumentsReady(false);
     if (!db || !botId || creating) return;
     return onSnapshot(query(collection(db, "chatbots", botId, "documents"), orderBy("createdAt", "desc")), (snap) => {
       setDocuments(snap.docs.map((item) => ({ id: item.id, ...(item.data() as BotDocument) })));
+      setDocumentsReady(true);
     });
-  }, [botId]);
+  }, [botId, creating]);
+
+  useEffect(() => {
+    if (!db || creating || !bot || !documentsReady) return;
+    const shouldUse = documents.length > 0;
+    if (bot.ragEnabled === shouldUse) return;
+    void updateDoc(doc(db, "chatbots", bot.id), { ragEnabled: shouldUse }).catch(() => undefined);
+  }, [bot, creating, documents.length, documentsReady]);
 
   useEffect(() => {
     if (!db || !botId || creating) return;
@@ -171,7 +182,6 @@ export function TeacherBotPage() {
       model: String(data.get("model") ?? "").trim() || DEFAULT_MODEL,
       systemPrompt: String(data.get("systemPrompt") ?? ""),
       welcomeMessage: String(data.get("welcomeMessage") ?? ""),
-      ragEnabled: data.get("ragEnabled") === "on",
     };
   }
 
@@ -181,8 +191,9 @@ export function TeacherBotPage() {
     if (!email) throw new Error("這個帳號沒有電郵，無法建立機械人");
     const next = settingsFrom(form);
     if (!next.name) throw new Error("請先填寫機械人名稱");
-    return addDoc(collection(db, "chatbots"), {
+      return addDoc(collection(db, "chatbots"), {
       ...next,
+      ragEnabled: false,
       ownerId: user.uid,
       ownerEmail: email,
       disabled: false,
@@ -205,7 +216,11 @@ export function TeacherBotPage() {
         return;
       }
       if (!bot) return;
-      await updateDoc(doc(db, "chatbots", bot.id), { ...next, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, "chatbots", bot.id), {
+        ...next,
+        ragEnabled: documents.length > 0,
+        updatedAt: serverTimestamp(),
+      });
       setMessage("已儲存設定");
     } catch (error) {
       setMessage(errorText(error));
@@ -238,6 +253,7 @@ export function TeacherBotPage() {
         createdAt: serverTimestamp(),
       });
       await uploadBytes(ref(storage, storagePath), file);
+      await updateDoc(doc(db, "chatbots", targetId), { ragEnabled: true, updatedAt: serverTimestamp() });
       const notice = "已上傳，系統正在整理參考資料";
       if (creating) navigate(`/teacher/bots/${targetId}`, { replace: true, state: { notice } });
       else setMessage(notice);
@@ -396,10 +412,6 @@ export function TeacherBotPage() {
         </label>
         <div className="settings-block">
           <h3>參考資料</h3>
-          <label className="check">
-            <input name="ragEnabled" type="checkbox" defaultChecked={shown.ragEnabled} />
-            回答時使用已上傳的參考資料
-          </label>
           <label className="file">
             上傳 txt、md 或 pdf
             <input

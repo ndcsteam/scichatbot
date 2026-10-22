@@ -80,7 +80,7 @@ export function AdminBotsPage() {
                   <td>{row.name}</td>
                   <td>{row.ownerEmail}</td>
                   <td>{row.model}</td>
-                  <td>{row.ragEnabled ? "啟用" : "關閉"}</td>
+                  <td>{row.ragEnabled ? "已上傳" : "未上傳"}</td>
                   <td>{row.disabled ? "已停用" : "使用中"}</td>
                   <td className="actions">
                     <button

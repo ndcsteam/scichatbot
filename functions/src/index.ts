@@ -240,6 +240,8 @@ export const deleteDocument = onCall(callOptions, async (request) => {
     await getStorage().bucket().file(storagePath).delete({ ignoreNotFound: true });
   }
   await docRef.delete();
+  const remaining = await db.collection("chatbots").doc(botId).collection("documents").limit(1).get();
+  await db.collection("chatbots").doc(botId).update({ ragEnabled: !remaining.empty });
   return { ok: true };
 });
 
@@ -322,7 +324,12 @@ export const sendMessage = onCall(
       }));
 
     let systemPrompt = String(bot.systemPrompt ?? "").trim();
-    if (bot.ragEnabled === true) {
+    const uploaded = await botRef.collection("documents").limit(1).get();
+    const useReference = !uploaded.empty;
+    if ((bot.ragEnabled === true) !== useReference) {
+      await botRef.update({ ragEnabled: useReference });
+    }
+    if (useReference) {
       const chunks = await loadChunks(botId);
       const context = buildContext(rankChunks(content, chunks));
       const guidance = context
