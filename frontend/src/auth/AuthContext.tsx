@@ -8,12 +8,14 @@ import {
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { doc, onSnapshot } from "firebase/firestore";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { allowedDomain, auth, db, firebaseReady } from "../firebase";
 import { syncUser } from "../lib/callables";
 import { emailMatchesDomain } from "../lib/domain";
 import { errorText } from "../lib/format";
 import type { Role, UserProfile } from "../types";
+
+type SignInPhase = "google" | "finishing" | null;
 
 type AuthContextValue = {
   ready: boolean;
@@ -23,6 +25,7 @@ type AuthContextValue = {
   profile: UserProfile | null;
   role: Role | null;
   error: string | null;
+  signingIn: SignInPhase;
   signIn: () => Promise<void>;
   signOutUser: () => Promise<void>;
   clearError: () => void;
@@ -41,7 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState<SignInPhase>(null);
+  const signingInRef = useRef(false);
   const configured = firebaseReady && Boolean(allowedDomain);
+
+  function stopSigningIn() {
+    signingInRef.current = false;
+    setSigningIn(null);
+  }
 
   useEffect(() => {
     if (!auth || !configured) {
@@ -57,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setProfile(null);
           setRole(null);
+          stopSigningIn();
           setReady(true);
           return;
         }
@@ -66,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setError(`請使用學校 Google 帳號（@${allowedDomain}）`);
             setUser(null);
             setRole(null);
+            stopSigningIn();
             setReady(true);
           }
           return;
@@ -85,7 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setError(errorText(caught));
           }
         } finally {
-          if (!ignore) setReady(true);
+          if (!ignore) {
+            stopSigningIn();
+            setReady(true);
+          }
         }
       })();
     });
@@ -132,24 +147,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       role,
       error,
+      signingIn,
       clearError: () => setError(null),
       signIn: async () => {
+        if (signingInRef.current) return;
         if (!auth || !configured) {
           setError("請先完成 Firebase 與學校網域設定");
           return;
         }
+        signingInRef.current = true;
+        setSigningIn("google");
         setError(null);
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ hd: allowedDomain, prompt: "select_account" });
         try {
           await signInWithPopup(auth, provider);
+          if (signingInRef.current) setSigningIn("finishing");
         } catch (caught) {
           if (caught instanceof FirebaseError && caught.code === "auth/popup-blocked") {
-            await signInWithRedirect(auth, provider);
-            return;
+            try {
+              await signInWithRedirect(auth, provider);
+              return;
+            } catch (redirectError) {
+              setError(errorText(redirectError));
+              stopSigningIn();
+              return;
+            }
           }
-          if (caught instanceof FirebaseError && caught.code === "auth/popup-closed-by-user") return;
-          setError(errorText(caught));
+          const cancelled =
+            caught instanceof FirebaseError &&
+            (caught.code === "auth/popup-closed-by-user" || caught.code === "auth/cancelled-popup-request");
+          if (!cancelled) setError(errorText(caught));
+          stopSigningIn();
         }
       },
       signOutUser: async () => {
@@ -157,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signOut(auth);
       },
     }),
-    [configured, error, profile, ready, role, user],
+    [configured, error, profile, ready, role, signingIn, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

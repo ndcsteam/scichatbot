@@ -5,9 +5,25 @@ import { LoadingScreen } from "../components/Layout";
 import { homePath } from "../components/RequireAuth";
 
 export function LoginPage() {
-  const { ready, configured, user, role, error, signIn } = useAuth();
-  if (!ready) return <LoadingScreen />;
+  const { ready, configured, user, role, error, signingIn, signIn } = useAuth();
   if (user && role) return <Navigate to={homePath(role)} replace />;
+  if (!ready && !signingIn) return <LoadingScreen />;
+  if (signingIn) {
+    return (
+      <div className="login-screen">
+        <section className="login-card login-status" aria-busy="true" aria-live="polite">
+          <p className="eyebrow">學校科學對話平台</p>
+          <div className="spinner" aria-hidden="true" />
+          <h1>{signingIn === "finishing" ? "正在完成登入" : "正在登入"}</h1>
+          <p className="lede">
+            {signingIn === "finishing"
+              ? "學校帳號已確認，正在進入平台。"
+              : "請在 Google 視窗選擇學校帳號。完成後會自動進入平台。"}
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="login-screen">
