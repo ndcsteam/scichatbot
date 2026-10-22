@@ -15,7 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
-import { deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
+import { deleteChatbot, deleteDocument, inviteStudent, removeStudent } from "../lib/callables";
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, DEFAULT_WELCOME } from "../lib/defaults";
 import { errorText, formatTime } from "../lib/format";
 import {
@@ -252,6 +252,23 @@ export function TeacherBotPage() {
     }
   }
 
+  async function removeBot() {
+    if (!bot) return;
+    const confirmed = window.confirm(
+      `確定刪除聊天機械人「${bot.name}」？參考資料、邀請和對話會一併刪除，而且不能復原。`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await deleteChatbot(bot.id);
+      navigate("/teacher");
+    } catch (error) {
+      setMessage(errorText(error));
+      setBusy(false);
+    }
+  }
+
   async function removeMember(studentUid: string) {
     if (!bot) return;
     setBusy(true);
@@ -304,7 +321,14 @@ export function TeacherBotPage() {
           <p className="eyebrow">聊天機械人</p>
           <h1>{creating ? "新聊天機械人" : shown.name}</h1>
         </div>
-        {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
+        <div className="actions">
+          {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
+          {creating ? null : (
+            <button type="button" className="button danger" disabled={busy} onClick={() => void removeBot()}>
+              刪除機械人
+            </button>
+          )}
+        </div>
       </div>
       {message ? <p className="notice">{message}</p> : null}
 

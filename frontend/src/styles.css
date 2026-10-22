@@ -213,6 +213,10 @@ textarea { resize: vertical; }
 
 .card-list, .plain-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
 
+.bot-row { display: flex; gap: 0.75rem; align-items: stretch; }
+.bot-row .bot-card { flex: 1; }
+.bot-row .button { align-self: center; }
+
 .bot-card {
   display: grid;
   gap: 0.35rem;

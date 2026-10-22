@@ -33,6 +33,10 @@ export function setBotDisabled(botId: string, disabled: boolean) {
   return call<{ ok: boolean }>("setBotDisabled", { botId, disabled });
 }
 
+export function deleteChatbot(botId: string) {
+  return call<{ ok: boolean }>("deleteChatbot", { botId });
+}
+
 export function inviteStudent(botId: string, email: string) {
   return call<{ ok: boolean }>("inviteStudent", { botId, email });
 }

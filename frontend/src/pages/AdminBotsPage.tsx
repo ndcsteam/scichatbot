@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
-import { setBotDisabled } from "../lib/callables";
+import { deleteChatbot, setBotDisabled } from "../lib/callables";
 import { errorText } from "../lib/format";
 import type { Chatbot } from "../types";
 
@@ -19,6 +19,22 @@ export function AdminBotsPage() {
       setRows(snap.docs.map((item) => ({ id: item.id, ...(item.data() as Chatbot) })));
     });
   }, []);
+
+  async function remove(row: Row) {
+    const confirmed = window.confirm(
+      `確定刪除聊天機械人「${row.name}」？參考資料、邀請和對話會一併刪除，而且不能復原。`,
+    );
+    if (!confirmed) return;
+    setBusyId(row.id);
+    setMessage("");
+    try {
+      await deleteChatbot(row.id);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusyId("");
+    }
+  }
 
   async function toggle(row: Row) {
     setBusyId(row.id);
@@ -66,7 +82,7 @@ export function AdminBotsPage() {
                   <td>{row.model}</td>
                   <td>{row.ragEnabled ? "啟用" : "關閉"}</td>
                   <td>{row.disabled ? "已停用" : "使用中"}</td>
-                  <td>
+                  <td className="actions">
                     <button
                       type="button"
                       className="button small secondary"
@@ -74,6 +90,14 @@ export function AdminBotsPage() {
                       onClick={() => void toggle(row)}
                     >
                       {row.disabled ? "啟用" : "停用"}
+                    </button>
+                    <button
+                      type="button"
+                      className="button small danger"
+                      disabled={busyId === row.id}
+                      onClick={() => void remove(row)}
+                    >
+                      刪除
                     </button>
                   </td>
                 </tr>

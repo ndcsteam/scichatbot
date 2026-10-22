@@ -152,6 +152,24 @@ export const deleteStudent = onCall({ ...callOptions, timeoutSeconds: 120 }, asy
   return { ok: true };
 });
 
+export const deleteChatbot = onCall({ ...callOptions, timeoutSeconds: 120 }, async (request) => {
+  const uid = requireUid(request.auth?.uid);
+  const role = request.auth?.token.role;
+  const botId = requireString(request.data?.botId, "缺少聊天機械人");
+  if (botId.includes("/")) throw new HttpsError("invalid-argument", "缺少聊天機械人");
+
+  const ref = db.collection("chatbots").doc(botId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "找不到聊天機械人");
+  const ownerId = String(snap.data()?.ownerId ?? "");
+  const allowed = role === "admin" || (role === "teacher" && ownerId === uid);
+  if (!allowed) throw new HttpsError("permission-denied", "只有管理員或這位機械人的老師可以刪除");
+
+  await deleteChatbotFiles(botId);
+  await db.recursiveDelete(ref);
+  return { ok: true };
+});
+
 export const setBotDisabled = onCall(callOptions, async (request) => {
   await requireAdmin(request.auth?.uid, request.auth?.token.role);
   const botId = requireString(request.data?.botId, "缺少聊天機械人");
@@ -430,6 +448,11 @@ async function writeChunks(botId: string, documentId: string, parts: string[]): 
     });
     await batch.commit();
   }
+}
+
+async function deleteChatbotFiles(botId: string): Promise<void> {
+  const [files] = await getStorage().bucket().getFiles({ prefix: `chatbots/${botId}/` });
+  await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
 }
 
 async function deleteStudentRecords(studentUid: string): Promise<void> {
