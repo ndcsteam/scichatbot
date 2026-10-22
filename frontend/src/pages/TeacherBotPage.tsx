@@ -146,6 +146,8 @@ export function TeacherBotPage() {
     }
     return [...map.values()].sort((a, b) => a.email.localeCompare(b.email, "zh-Hant"));
   }, [conversations, members]);
+  const modelGroups = useMemo(() => groupPoeModels(models), [models]);
+  const modelKnown = models.some((item) => item.label === model || item.id.toLowerCase() === model.toLowerCase());
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -255,8 +257,6 @@ export function TeacherBotPage() {
   }
 
   const selected = people.find((person) => person.uid === selectedUid);
-  const modelGroups = useMemo(() => groupPoeModels(models), [models]);
-  const modelKnown = models.some((item) => item.label === model || item.id.toLowerCase() === model.toLowerCase());
 
   return (
     <Layout>
