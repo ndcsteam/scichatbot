@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collectionGroup, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ArrowRightIcon, BotIcon, LinkIcon } from "../components/Icons";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
 import type { Chatbot } from "../types";
@@ -51,14 +52,24 @@ export function StudentHomePage() {
       </div>
       {error ? <p className="notice">{error}</p> : null}
       {rows.length === 0 && !error ? (
-        <p className="muted">打開老師給你的加入連結後，聊天機械人會出現在這裡。</p>
+        <section className="empty-state">
+          <span className="empty-icon">
+            <LinkIcon size={28} />
+          </span>
+          <h2>還沒有加入任何聊天機械人</h2>
+          <p>打開老師給你的加入連結，用學校 Google 帳號登入後，聊天機械人就會出現在這裡。</p>
+        </section>
       ) : (
         <ul className="card-list">
           {rows.map((row) => (
             <li key={row.id}>
               <Link to={`/student/bots/${row.id}`} className="bot-card">
+                <span className="tile">
+                  <BotIcon size={24} />
+                </span>
                 <strong>{row.name}</strong>
-                <span>{row.welcomeMessage}</span>
+                <ArrowRightIcon size={20} className="go" />
+                <span className="meta">{row.welcomeMessage}</span>
               </Link>
             </li>
           ))}

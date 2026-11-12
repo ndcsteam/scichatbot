@@ -3,8 +3,8 @@ import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/fir
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
-import { MessageImages } from "../components/MessageImages";
-import { MessageText } from "../components/MessageText";
+import { CopyIcon, LinkIcon, TrashIcon } from "../components/Icons";
+import { MessageItem } from "../components/MessageItem";
 import { db } from "../firebase";
 import { createJoinLink, removeStudent, revokeJoinLink } from "../lib/callables";
 import { errorText, formatTime } from "../lib/format";
@@ -226,7 +226,10 @@ export function TeacherStudentsPage() {
       {message ? <p className="notice">{message}</p> : null}
 
       <section className="panel stack">
-        <h2>加入連結</h2>
+        <h2 className="section-title">
+          <LinkIcon size={20} />
+          加入連結
+        </h2>
         <p className="muted">
           把連結傳給學生。學生用學校 Google
           帳號登入後，就會自動加入這個聊天機械人。連結過期後不能再用來加入，已經加入的學生不受影響。
@@ -269,9 +272,11 @@ export function TeacherStudentsPage() {
                 disabled={busy || !linkActive}
                 onClick={() => void copyLink()}
               >
+                <CopyIcon size={16} />
                 複製連結
               </button>
               <button type="button" className="button secondary" disabled={busy} onClick={() => void stopLink()}>
+                <TrashIcon size={16} />
                 停用連結
               </button>
             </div>
@@ -341,12 +346,14 @@ export function TeacherStudentsPage() {
               {selected && !selectedThread ? <p className="muted">這位學生尚未開始對話。</p> : null}
               {selectedThread && messages.length === 0 ? <p className="muted">這個對話沒有訊息。</p> : null}
               {messages.map((item) => (
-                <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
-                  <header>{item.role === "user" ? "學生" : "機械人"}</header>
-                  <MessageImages paths={item.images} />
-                  <MessageText role={item.role} content={item.content} />
-                  <time>{formatTime(item.createdAt)}</time>
-                </article>
+                <MessageItem
+                  key={item.id}
+                  role={item.role}
+                  content={item.content}
+                  images={item.images}
+                  time={formatTime(item.createdAt)}
+                  userLabel="學生"
+                />
               ))}
             </div>
           </div>

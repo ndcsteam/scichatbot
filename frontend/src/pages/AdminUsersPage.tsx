@@ -194,7 +194,9 @@ export function AdminUsersPage() {
                         ))}
                       </select>
                     </td>
-                    <td data-label="狀態">{row.disabled ? "已停用" : "使用中"}</td>
+                    <td data-label="狀態">
+                      <span className={row.disabled ? "status-dot off" : "status-dot ok"}>{row.disabled ? "已停用" : "使用中"}</span>
+                    </td>
                     <td data-label="首次登入">{formatTime(row.createdAt)}</td>
                     <td className="actions">
                       <button

@@ -80,8 +80,12 @@ export function AdminBotsPage() {
                   <td data-label="名稱">{row.name}</td>
                   <td data-label="老師">{row.ownerEmail}</td>
                   <td data-label="模型">{row.model}</td>
-                  <td data-label="參考資料">{row.ragEnabled ? "已上傳" : "未上傳"}</td>
-                  <td data-label="狀態">{row.disabled ? "已停用" : "使用中"}</td>
+                  <td data-label="參考資料">
+                    <span className={row.ragEnabled ? "status-dot ok" : "status-dot"}>{row.ragEnabled ? "已上傳" : "未上傳"}</span>
+                  </td>
+                  <td data-label="狀態">
+                    <span className={row.disabled ? "status-dot off" : "status-dot ok"}>{row.disabled ? "已停用" : "使用中"}</span>
+                  </td>
                   <td className="actions">
                     <button
                       type="button"

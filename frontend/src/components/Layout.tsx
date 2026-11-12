@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { CloseIcon, FlaskIcon, LogoutIcon, MenuIcon } from "./Icons";
 import { ROLE_LABEL } from "../lib/defaults";
 import type { Role } from "../types";
 
@@ -27,6 +28,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <header className={menuOpen ? "topbar open" : "topbar"}>
         <Link to="/" className="brand">
+          <span className="brand-mark">
+            <FlaskIcon size={19} />
+          </span>
           SciChatbot
         </Link>
         <button
@@ -36,6 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           aria-controls="topbar-menu"
           onClick={() => setMenuOpen((open) => !open)}
         >
+          {menuOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
           {menuOpen ? "收起" : "選單"}
         </button>
         <div id="topbar-menu" className="topbar-menu">
@@ -47,9 +52,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="who">
+            <span className="avatar user" aria-hidden="true">
+              {initialOf(profile?.displayName || profile?.email)}
+            </span>
             <span className="who-name">{profile?.displayName || "使用者"}</span>
             {role ? <span className="role-chip">{ROLE_LABEL[role]}</span> : null}
-            <button type="button" className="button ghost" onClick={() => void signOutUser()}>
+            <button type="button" className="button ghost small" onClick={() => void signOutUser()}>
+              <LogoutIcon size={16} />
               登出
             </button>
           </div>
@@ -60,10 +69,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function initialOf(name?: string | null): string {
+  const first = Array.from((name ?? "").trim())[0];
+  return first ? first.toUpperCase() : "?";
+}
+
 export function LoadingScreen() {
   return (
     <div className="center-screen">
-      <p className="muted">正在確認登入狀態…</p>
+      <div className="login-status">
+        <div className="spinner" aria-hidden="true" />
+        <p className="muted">正在確認登入狀態…</p>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { allowedDomain } from "../firebase";
+import { FlaskIcon, GoogleIcon } from "../components/Icons";
 import { LoadingScreen } from "../components/Layout";
 import { homePath } from "../components/RequireAuth";
 import { peekAfterLogin } from "../lib/afterLogin";
@@ -29,20 +30,28 @@ export function LoginPage() {
   return (
     <div className="login-screen">
       <section className="login-card">
+        <div className="login-brand">
+          <span className="brand-mark">
+            <FlaskIcon size={24} />
+          </span>
+          <strong>SciChatbot</strong>
+        </div>
         <p className="eyebrow">學校科學對話平台</p>
-        <h1>SciChatbot</h1>
+        <h1>歡迎回來</h1>
         <p className="lede">
           老師開設聊天機械人，設定提示詞與參考資料。學生用自己的學校 Google 帳號，各自與機械人對話。
         </p>
         {configured ? (
-          <p className="domain-note">只接受 @{allowedDomain}</p>
+          <p className="domain-note">只接受 @{allowedDomain} 學校帳號</p>
         ) : (
           <p className="notice">請先在 frontend/.env 填入 Firebase 設定與 VITE_ALLOWED_GOOGLE_DOMAIN。</p>
         )}
         {error ? <p className="notice">{error}</p> : null}
-        <button type="button" className="button" disabled={!configured} onClick={() => void signIn()}>
+        <button type="button" className="button google-button" disabled={!configured} onClick={() => void signIn()}>
+          <GoogleIcon />
           使用學校 Google 帳號登入
         </button>
+        <p className="login-foot">登入即表示你同意以學校帳號使用本平台。</p>
       </section>
     </div>
   );

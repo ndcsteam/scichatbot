@@ -13,6 +13,7 @@ import {
 import { ref, uploadBytes } from "firebase/storage";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { TrashIcon, UsersIcon } from "../components/Icons";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
 import { deleteChatbot, deleteDocument } from "../lib/callables";
@@ -297,11 +298,13 @@ export function TeacherBotPage() {
           {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
           {creating ? null : (
             <Link className="button secondary" to={`/teacher/bots/${shown.id}/students`}>
+              <UsersIcon size={18} />
               學生管理
             </Link>
           )}
           {creating ? null : (
-            <button type="button" className="button danger" disabled={busy} onClick={() => void removeBot()}>
+            <button type="button" className="button danger secondary" disabled={busy} onClick={() => void removeBot()}>
+              <TrashIcon size={18} />
               刪除機械人
             </button>
           )}

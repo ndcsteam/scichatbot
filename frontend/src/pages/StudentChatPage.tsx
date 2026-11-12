@@ -3,8 +3,8 @@ import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/fir
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
-import { MessageImages } from "../components/MessageImages";
-import { MessageText } from "../components/MessageText";
+import { CloseIcon, HistoryIcon, ImageIcon, PlusIcon, SendIcon, SparklesIcon } from "../components/Icons";
+import { MessageItem, TypingIndicator } from "../components/MessageItem";
 import { db } from "../firebase";
 import { sendMessage } from "../lib/callables";
 import { prepareImage, type PreparedImage } from "../lib/image";
@@ -214,6 +214,7 @@ export function StudentChatPage() {
         <aside className={historyOpen ? "thread-list open" : "thread-list"} aria-label="對話歷史">
           <div className="thread-actions">
             <button type="button" className="button" disabled={sending || Boolean(blocked)} onClick={startNew}>
+              <PlusIcon size={18} />
               開新對話
             </button>
             <button type="button" className="button secondary drawer-close" onClick={() => setHistoryOpen(false)}>
@@ -246,12 +247,18 @@ export function StudentChatPage() {
               <h1>{bot?.name || "聊天"}</h1>
             </div>
             <div className="chat-head-side">
-              {bot?.ragEnabled ? <span className="pill">會參考老師上傳的資料</span> : null}
+              {bot?.ragEnabled ? (
+                <span className="pill">
+                  <SparklesIcon size={14} />
+                  會參考老師上傳的資料
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="button secondary small history-toggle"
                 onClick={() => setHistoryOpen(true)}
               >
+                <HistoryIcon size={16} />
                 對話紀錄
               </button>
             </div>
@@ -262,20 +269,18 @@ export function StudentChatPage() {
             !conversationId &&
             (startedNew || (listReady && conversations.length === 0)) &&
             bot?.welcomeMessage ? (
-              <article className="bubble assistant">
-                <header>機械人</header>
-                <p>{bot.welcomeMessage}</p>
-              </article>
+              <MessageItem role="assistant" content={bot.welcomeMessage} copyable={false} />
             ) : null}
             {messages.map((item) => (
-              <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
-                <header>{item.role === "user" ? "我" : "機械人"}</header>
-                <MessageImages paths={item.images} />
-                <MessageText role={item.role} content={item.content} />
-                <time>{formatTime(item.createdAt)}</time>
-              </article>
+              <MessageItem
+                key={item.id}
+                role={item.role}
+                content={item.content}
+                images={item.images}
+                time={formatTime(item.createdAt)}
+              />
             ))}
-            {sending ? <p className="muted">正在回覆…</p> : null}
+            {sending ? <TypingIndicator /> : null}
             <div ref={endRef} />
           </div>
           <div className={attached.length > 0 ? "composer-dock has-images" : "composer-dock"}>
@@ -291,62 +296,57 @@ export function StudentChatPage() {
                       aria-label="移除圖片"
                       onClick={() => removeAttached(item.id)}
                     >
-                      ×
+                      <CloseIcon size={13} />
                     </button>
                   </li>
                 ))}
               </ul>
             ) : null}
-            <form
-              className={maxImages > 0 ? "composer" : "composer no-images"}
-              onSubmit={(event) => void submit(event)}
-            >
+            <form className="composer" onSubmit={(event) => void submit(event)}>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(event) => void pickImages(event)}
+              />
+              {maxImages > 0 ? (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={preparing ? "正在處理圖片" : "加入圖片"}
+                  title={`加入圖片（最多 ${maxImages} 張）`}
+                  disabled={Boolean(blocked) || sending || preparing || attached.length >= maxImages}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {preparing ? <span className="spinner mini" aria-hidden="true" /> : <ImageIcon size={21} />}
+                </button>
+              ) : null}
               <textarea
                 ref={draftRef}
                 value={draft}
                 rows={1}
                 maxLength={limits.maxChars}
-                placeholder="輸入問題"
+                placeholder="輸入問題，Enter 送出、Shift + Enter 換行"
                 disabled={Boolean(blocked) || sending}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
               />
-              <div className="composer-actions">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(event) => void pickImages(event)}
-                />
-                {maxImages > 0 ? (
-                  <button
-                    type="button"
-                    className="button secondary attach-button"
-                    aria-label="加入圖片"
-                    disabled={Boolean(blocked) || sending || preparing || attached.length >= maxImages}
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <span className="label-full">{preparing ? "處理中…" : "加入圖片"}</span>
-                    <span className="label-short" aria-hidden="true">
-                      {preparing ? "…" : "+"}
-                    </span>
-                  </button>
-                ) : null}
-                <button
-                  type="submit"
-                  className="button send-button"
-                  disabled={Boolean(blocked) || sending || preparing || (!draft.trim() && attached.length === 0)}
-                >
-                  送出
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="icon-button send"
+                aria-label="送出"
+                title="送出"
+                disabled={Boolean(blocked) || sending || preparing || (!draft.trim() && attached.length === 0)}
+              >
+                <SendIcon size={20} />
+              </button>
             </form>
             {maxImages > 0 ? (
               <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>

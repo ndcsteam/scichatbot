@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ArrowRightIcon, BotIcon, PlusIcon, TrashIcon } from "../components/Icons";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
 import { deleteChatbot } from "../lib/callables";
@@ -51,22 +52,48 @@ export function TeacherHomePage() {
           <h1>我的聊天機械人</h1>
         </div>
         <button type="button" className="button" onClick={() => navigate("/teacher/bots/new")}>
-          建立
+          <PlusIcon size={18} />
+          建立聊天機械人
         </button>
       </div>
       {message ? <p className="notice">{message}</p> : null}
       {rows.length === 0 ? (
-        <p className="muted">尚未建立聊天機械人。</p>
+        <section className="empty-state">
+          <span className="empty-icon">
+            <BotIcon size={28} />
+          </span>
+          <h2>建立你的第一個聊天機械人</h2>
+          <p>設定 AI 模型、提示詞與參考資料後，產生加入連結，學生就能開始提問。</p>
+          <button type="button" className="button" onClick={() => navigate("/teacher/bots/new")}>
+            <PlusIcon size={18} />
+            建立聊天機械人
+          </button>
+        </section>
       ) : (
         <ul className="card-list">
           {rows.map((row) => (
             <li key={row.id} className="bot-row">
               <Link to={`/teacher/bots/${row.id}`} className="bot-card">
+                <span className="tile">
+                  <BotIcon size={24} />
+                </span>
                 <strong>{row.name}</strong>
-                <span>{row.disabled ? "已停用" : row.ragEnabled ? "已上傳參考資料" : "尚未上傳參考資料"}</span>
+                <ArrowRightIcon size={20} className="go" />
+                <span className="meta">
+                  <span className={row.disabled ? "status-dot off" : row.ragEnabled ? "status-dot ok" : "status-dot gold"}>
+                    {row.disabled ? "已停用" : row.ragEnabled ? "已上傳參考資料" : "尚未上傳參考資料"}
+                  </span>
+                </span>
               </Link>
-              <button type="button" className="button danger" disabled={busyId === row.id} onClick={() => void remove(row)}>
-                刪除
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`刪除「${row.name}」`}
+                title="刪除"
+                disabled={busyId === row.id}
+                onClick={() => void remove(row)}
+              >
+                <TrashIcon size={19} />
               </button>
             </li>
           ))}
