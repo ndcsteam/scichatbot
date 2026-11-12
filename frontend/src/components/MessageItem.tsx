@@ -8,6 +8,8 @@ type Props = {
   role: "user" | "assistant";
   content: string;
   images?: string[];
+  // 尚未上傳的本機圖片（data URL），測試對話使用。
+  previews?: string[];
   time?: string;
   userLabel?: string;
   botLabel?: string;
@@ -18,6 +20,7 @@ export function MessageItem({
   role,
   content,
   images,
+  previews,
   time,
   userLabel = "我",
   botLabel = "學習助教",
@@ -48,6 +51,13 @@ export function MessageItem({
             {time ? <time>{time}</time> : null}
           </header>
           <MessageImages paths={images} />
+          {previews && previews.length > 0 ? (
+            <div className="message-images">
+              {previews.map((url, index) => (
+                <img key={index} src={url} alt="上載的圖片" />
+              ))}
+            </div>
+          ) : null}
           <MessageText role="user" content={content} />
         </div>
       </article>

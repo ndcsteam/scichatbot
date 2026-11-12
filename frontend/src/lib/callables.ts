@@ -65,3 +65,14 @@ export function sendMessage(botId: string, content: string, conversationId?: str
     ...(conversationId ? { conversationId } : {}),
   });
 }
+
+export type TestTurn = { role: "user" | "assistant"; content: string; imageCount?: number };
+
+export function testChat(botId: string, content: string, history: TestTurn[], images: string[] = []) {
+  return call<{ answer: string }>("testChat", {
+    botId,
+    content,
+    history,
+    ...(images.length > 0 ? { images } : {}),
+  });
+}

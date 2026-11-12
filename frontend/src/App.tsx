@@ -12,6 +12,7 @@ import { StudentHomePage } from "./pages/StudentHomePage";
 import { TeacherBotPage } from "./pages/TeacherBotPage";
 import { TeacherHomePage } from "./pages/TeacherHomePage";
 import { TeacherRecordsPage } from "./pages/TeacherRecordsPage";
+import { TeacherTestPage } from "./pages/TeacherTestPage";
 import { TeacherStudentsPage } from "./pages/TeacherStudentsPage";
 
 function HomeRedirect() {
@@ -72,6 +73,14 @@ export function App() {
         element={
           <RequireRole role="teacher">
             <TeacherRecordsPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/teacher/bots/:botId/test"
+        element={
+          <RequireRole role="teacher">
+            <TeacherTestPage />
           </RequireRole>
         }
       />

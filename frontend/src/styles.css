@@ -892,6 +892,9 @@ textarea { resize: vertical; line-height: 1.55; }
   min-height: calc(100dvh - 8rem);
 }
 
+.test-chat { width: 100%; max-width: 880px; margin: 0 auto; }
+.test-note { margin: 0.75rem 0 0; }
+
 .chat-head {
   display: flex;
   justify-content: space-between;

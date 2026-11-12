@@ -13,7 +13,7 @@ import {
 import { ref, uploadBytes } from "firebase/storage";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { TrashIcon, UsersIcon } from "../components/Icons";
+import { SparklesIcon, TrashIcon, UsersIcon } from "../components/Icons";
 import { Layout } from "../components/Layout";
 import { db, storage } from "../firebase";
 import { deleteChatbot, deleteDocument } from "../lib/callables";
@@ -296,6 +296,12 @@ export function TeacherBotPage() {
         </div>
         <div className="actions">
           {shown.disabled ? <span className="pill warn">管理員已停用</span> : null}
+          {creating ? null : (
+            <Link className="button" to={`/teacher/bots/${shown.id}/test`}>
+              <SparklesIcon size={18} />
+              測試機械人
+            </Link>
+          )}
           {creating ? null : (
             <Link className="button secondary" to={`/teacher/bots/${shown.id}/students`}>
               <UsersIcon size={18} />

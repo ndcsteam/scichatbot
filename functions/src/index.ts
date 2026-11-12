@@ -13,6 +13,7 @@ import { describeResult, readPagesWithVision, renderPdfPages } from "./visionPdf
 import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
 import { NO_EMOJI_INSTRUCTION, stripEmoji } from "./emoji.js";
 import { resolveLimits } from "./limits.js";
+import { parseTestHistory } from "./testChat.js";
 import { IMAGE_ONLY_PROMPT, decodeImages, historyText, imageDataUrl, newImagePath } from "./image.js";
 import {
   joinDurationFrom,
@@ -449,35 +450,7 @@ export const sendMessage = onCall(
             : historyText(String(item.content ?? ""), Array.isArray(item.images) ? item.images.length : 0),
       }));
 
-    let systemPrompt = String(bot.systemPrompt ?? "").trim();
-    const uploaded = await botRef.collection("documents").limit(1).get();
-    const useReference = !uploaded.empty;
-    if ((bot.ragEnabled === true) !== useReference) {
-      await botRef.update({ ragEnabled: useReference });
-    }
-    if (useReference) {
-      const chunks = await loadChunks(botId);
-      const context = buildContext(rankChunks(content, chunks));
-      const guidance = context
-        ? `以下是與問題相關的參考資料。請優先依據這些資料回答；資料不足時請說明，不要捏造。\n\n${context}`
-        : "目前沒有檢索到相關參考資料。若問題超出已提供的資料，請明白說明。";
-      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${guidance}` : guidance;
-    }
-    systemPrompt = systemPrompt ? `${systemPrompt}\n\n${NO_EMOJI_INSTRUCTION}` : NO_EMOJI_INSTRUCTION;
-
-    const answer = await askPoe(String(bot.model ?? ""), [
-      ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
-      ...history,
-      images.length === 0
-        ? { role: "user" as const, content }
-        : {
-            role: "user" as const,
-            content: [
-              { type: "text" as const, text: content || IMAGE_ONLY_PROMPT },
-              ...images.map((image) => ({ type: "image_url" as const, image_url: { url: imageDataUrl(image) } })),
-            ],
-          },
-    ]);
+    const answer = await answerWithBot(botId, bot, content, history, images);
 
     const imagePaths = await Promise.all(
       images.map(async (image, index) => {
@@ -511,6 +484,84 @@ export const sendMessage = onCall(
     return { answer, conversationId: conversationRef.id };
   },
 );
+
+export const testChat = onCall(
+  { ...callOptions, timeoutSeconds: 120, memory: "512MiB", secrets: [poeApiKey] },
+  async (request) => {
+    const uid = requireUid(request.auth?.uid);
+    const role = request.auth?.token.role;
+    if (role !== "teacher" && role !== "admin") {
+      throw new HttpsError("permission-denied", "只有老師可以測試聊天機械人");
+    }
+    const botId = requireString(request.data?.botId, "缺少聊天機械人");
+    if (botId.includes("/")) throw new HttpsError("invalid-argument", "缺少聊天機械人");
+    const botSnap = await db.collection("chatbots").doc(botId).get();
+    if (!botSnap.exists) throw new HttpsError("not-found", "找不到聊天機械人");
+    const bot = botSnap.data() ?? {};
+    if (role === "teacher" && bot.ownerId !== uid) {
+      throw new HttpsError("permission-denied", "這不是你的聊天機械人");
+    }
+
+    const limits = resolveLimits(bot.limits);
+    const content = String(request.data?.content ?? "").trim();
+    if (content.length > limits.maxChars) {
+      throw new HttpsError("invalid-argument", `訊息最長 ${limits.maxChars} 字`);
+    }
+    const decoded = decodeImages(request.data?.images, limits.maxImages);
+    if (!decoded.ok) throw new HttpsError("invalid-argument", decoded.message);
+    if (!content && decoded.images.length === 0) throw new HttpsError("invalid-argument", "請輸入訊息");
+
+    // 測試對話不寫入資料庫，也不儲存圖片，學生與紀錄頁都看不到。
+    const history = parseTestHistory(request.data?.history, limits.historyLimit, {
+      cleanAnswer: stripEmoji,
+      userText: historyText,
+    });
+    const answer = await answerWithBot(botId, bot, content, history, decoded.images);
+    return { answer };
+  },
+);
+
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+// 學生對話與老師測試共用：組合系統提示詞（含參考資料檢索）後交給 Poe。
+async function answerWithBot(
+  botId: string,
+  bot: FirebaseFirestore.DocumentData,
+  content: string,
+  history: ChatTurn[],
+  images: Buffer[],
+): Promise<string> {
+  const botRef = db.collection("chatbots").doc(botId);
+  let systemPrompt = String(bot.systemPrompt ?? "").trim();
+  const uploaded = await botRef.collection("documents").limit(1).get();
+  const useReference = !uploaded.empty;
+  if ((bot.ragEnabled === true) !== useReference) {
+    await botRef.update({ ragEnabled: useReference });
+  }
+  if (useReference) {
+    const chunks = await loadChunks(botId);
+    const context = buildContext(rankChunks(content, chunks));
+    const guidance = context
+      ? `以下是與問題相關的參考資料。請優先依據這些資料回答；資料不足時請說明，不要捏造。\n\n${context}`
+      : "目前沒有檢索到相關參考資料。若問題超出已提供的資料，請明白說明。";
+    systemPrompt = systemPrompt ? `${systemPrompt}\n\n${guidance}` : guidance;
+  }
+  systemPrompt = systemPrompt ? `${systemPrompt}\n\n${NO_EMOJI_INSTRUCTION}` : NO_EMOJI_INSTRUCTION;
+
+  return askPoe(String(bot.model ?? ""), [
+    ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+    ...history,
+    images.length === 0
+      ? { role: "user" as const, content }
+      : {
+          role: "user" as const,
+          content: [
+            { type: "text" as const, text: content || IMAGE_ONLY_PROMPT },
+            ...images.map((image) => ({ type: "image_url" as const, image_url: { url: imageDataUrl(image) } })),
+          ],
+        },
+  ]);
+}
 
 type PoeContent =
   | string
