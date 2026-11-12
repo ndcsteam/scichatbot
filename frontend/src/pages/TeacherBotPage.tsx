@@ -410,9 +410,9 @@ export function TeacherBotPage() {
         <div className="settings-block">
           <h3>參考資料</h3>
           <label className="file">
-            上傳 txt、md 或 pdf，每個小於 32MB。PDF 會由 AI 逐頁閱讀，連圖片、圖表與公式也會轉成文字（最多前 60 頁，大約每頁需要十多秒）
             <input
               type="file"
+              aria-label="上傳參考資料"
               accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
               disabled={busy}
               onChange={(event) => {
