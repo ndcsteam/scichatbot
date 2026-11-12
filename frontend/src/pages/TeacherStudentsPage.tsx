@@ -3,6 +3,7 @@ import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/fir
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
+import { MessageText } from "../components/MessageText";
 import { db } from "../firebase";
 import { createJoinLink, removeStudent, revokeJoinLink } from "../lib/callables";
 import { errorText, formatTime } from "../lib/format";
@@ -318,7 +319,7 @@ export function TeacherStudentsPage() {
             {messages.map((item) => (
               <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
                 <header>{item.role === "user" ? "學生" : "機械人"}</header>
-                <p>{item.content}</p>
+                <MessageText role={item.role} content={item.content} />
                 <time>{formatTime(item.createdAt)}</time>
               </article>
             ))}
