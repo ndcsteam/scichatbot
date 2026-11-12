@@ -63,6 +63,7 @@ export type ConversationMeta = {
 export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  images?: string[];
   seq: number;
   createdAt?: Timestamp;
 };

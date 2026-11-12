@@ -27,5 +27,23 @@ service firebase.storage {
 
       allow delete: if request.auth != null && (isAdmin() || ownsBot());
     }
+
+    // 學生在對話中附上的圖片：只有 Cloud Functions 可以寫入。
+    match /chatbots/{botId}/chat/{conversationId}/{fileName} {
+      function conversation() {
+        return firestore.get(/databases/(default)/documents/chatbots/$(botId)/conversations/$(conversationId)).data;
+      }
+
+      allow read: if request.auth != null
+        && (
+          request.auth.token.role == "admin"
+          || (
+            request.auth.token.role == "teacher"
+            && firestore.get(/databases/(default)/documents/chatbots/$(botId)).data.ownerId == request.auth.uid
+          )
+          || (request.auth.token.role == "student" && conversation().studentUid == request.auth.uid)
+        );
+      allow write: if false;
+    }
   }
 }

@@ -57,10 +57,11 @@ export function deleteDocument(botId: string, docId: string) {
   return call<{ ok: boolean }>("deleteDocument", { botId, docId });
 }
 
-export function sendMessage(botId: string, content: string, conversationId?: string) {
+export function sendMessage(botId: string, content: string, conversationId?: string, images: string[] = []) {
   return call<{ answer: string; conversationId: string }>("sendMessage", {
     botId,
     content,
+    ...(images.length > 0 ? { images } : {}),
     ...(conversationId ? { conversationId } : {}),
   });
 }

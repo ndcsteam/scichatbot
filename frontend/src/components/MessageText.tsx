@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import { stripEmoji } from "../lib/emoji";
 
 export function MessageText({ role, content }: { role: "user" | "assistant"; content: string }) {
-  if (role === "user") return <p>{content}</p>;
+  if (role === "user") return content ? <p>{content}</p> : null;
   return (
     <div className="markdown">
       <ReactMarkdown

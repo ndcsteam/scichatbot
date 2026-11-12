@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldPath, FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
+import { randomBytes } from "node:crypto";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { beforeUserCreated } from "firebase-functions/v2/identity";
@@ -10,6 +11,7 @@ import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
 import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
 import { NO_EMOJI_INSTRUCTION, stripEmoji } from "./emoji.js";
+import { IMAGE_ONLY_PROMPT, decodeImages, historyText, imageDataUrl, newImagePath } from "./image.js";
 import {
   joinDurationFrom,
   joinLinkExpired,
@@ -360,8 +362,12 @@ export const sendMessage = onCall(
       throw new HttpsError("permission-denied", "只有學生可以傳送訊息");
     }
     const botId = requireString(request.data?.botId, "缺少聊天機械人");
-    const content = requireString(request.data?.content, "請輸入訊息").trim();
+    const content = String(request.data?.content ?? "").trim();
     if (content.length > 4000) throw new HttpsError("invalid-argument", "訊息最長 4000 字");
+    const decoded = decodeImages(request.data?.images);
+    if (!decoded.ok) throw new HttpsError("invalid-argument", decoded.message);
+    const images = decoded.images;
+    if (!content && images.length === 0) throw new HttpsError("invalid-argument", "請輸入訊息");
 
     const botRef = db.collection("chatbots").doc(botId);
     const botSnap = await botRef.get();
@@ -391,7 +397,10 @@ export const sendMessage = onCall(
       .filter((item) => item.role === "user" || item.role === "assistant")
       .map((item) => ({
         role: item.role as "user" | "assistant",
-        content: item.role === "assistant" ? stripEmoji(String(item.content ?? "")) : String(item.content ?? ""),
+        content:
+          item.role === "assistant"
+            ? stripEmoji(String(item.content ?? ""))
+            : historyText(String(item.content ?? ""), Array.isArray(item.images) ? item.images.length : 0),
       }));
 
     let systemPrompt = String(bot.systemPrompt ?? "").trim();
@@ -413,13 +422,35 @@ export const sendMessage = onCall(
     const answer = await askPoe(String(bot.model ?? ""), [
       ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
       ...history,
-      { role: "user", content },
+      images.length === 0
+        ? { role: "user" as const, content }
+        : {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: content || IMAGE_ONLY_PROMPT },
+              ...images.map((image) => ({ type: "image_url" as const, image_url: { url: imageDataUrl(image) } })),
+            ],
+          },
     ]);
+
+    const imagePaths = await Promise.all(
+      images.map(async (image, index) => {
+        const path = newImagePath(botId, conversationRef.id, index, randomBytes(8).toString("hex"));
+        await getStorage().bucket().file(path).save(image, { contentType: "image/jpeg", resumable: false });
+        return path;
+      }),
+    );
 
     const messages = conversationRef.collection("messages");
     const now = FieldValue.serverTimestamp();
     const seq = Date.now();
-    await messages.add({ role: "user", content, createdAt: now, seq });
+    await messages.add({
+      role: "user",
+      content,
+      ...(imagePaths.length > 0 ? { images: imagePaths } : {}),
+      createdAt: now,
+      seq,
+    });
     await messages.add({ role: "assistant", content: answer, createdAt: now, seq: seq + 1 });
     await conversationRef.set(
       {
@@ -427,7 +458,7 @@ export const sendMessage = onCall(
         email: memberSnap.data()?.email ?? request.auth?.token.email ?? "",
         updatedAt: now,
         lastMessage: answer.slice(0, 120),
-        ...(access === "new" ? { title: conversationTitle(content), createdAt: now } : {}),
+        ...(access === "new" ? { title: conversationTitle(content || "圖片提問"), createdAt: now } : {}),
       },
       { merge: true },
     );
@@ -435,9 +466,14 @@ export const sendMessage = onCall(
   },
 );
 
+type PoeContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+type PoeMessage = { role: "system" | "user" | "assistant"; content: PoeContent };
+
 async function askPoe(
   model: string,
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  messages: PoeMessage[],
 ): Promise<string> {
   const apiKey = poeApiKey.value();
   if (!apiKey) throw new HttpsError("failed-precondition", "尚未設定 Poe API Key");
@@ -555,6 +591,8 @@ async function deleteStudentRecords(studentUid: string): Promise<void> {
     ]);
     if (memberSnap.exists) await memberRef.delete();
     for (const conversation of conversationSnap.docs) {
+      const [files] = await getStorage().bucket().getFiles({ prefix: `chatbots/${bot.id}/chat/${conversation.id}/` });
+      await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
       await db.recursiveDelete(conversation.ref);
     }
   }

@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
+import { MessageImages } from "../components/MessageImages";
 import { MessageText } from "../components/MessageText";
 import { db } from "../firebase";
 import { sendMessage } from "../lib/callables";
+import { MAX_IMAGES, prepareImage, type PreparedImage } from "../lib/image";
 import { errorText, formatTime } from "../lib/format";
 import type { Chatbot, ChatMessage, ConversationMeta } from "../types";
 
@@ -23,7 +25,10 @@ export function StudentChatPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [attached, setAttached] = useState<PreparedImage[]>([]);
+  const [preparing, setPreparing] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -98,6 +103,7 @@ export function StudentChatPage() {
     if (sending) return;
     setError("");
     setDraft("");
+    clearAttached();
     setSearchParams({ new: "1" }, { replace: true });
   }
 
@@ -107,15 +113,59 @@ export function StudentChatPage() {
     setSearchParams({ c: id }, { replace: true });
   }
 
+  function clearAttached() {
+    setAttached((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+  }
+
+  function removeAttached(id: string) {
+    setAttached((current) => {
+      current.filter((item) => item.id === id).forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return current.filter((item) => item.id !== id);
+    });
+  }
+
+  async function pickImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+    const room = MAX_IMAGES - attached.length;
+    if (room <= 0) {
+      setError(`一次最多可以附上 ${MAX_IMAGES} 張圖片`);
+      return;
+    }
+    setError(files.length > room ? `一次最多可以附上 ${MAX_IMAGES} 張圖片，多出的已略過` : "");
+    setPreparing(true);
+    try {
+      const prepared: PreparedImage[] = [];
+      for (const file of files.slice(0, room)) {
+        prepared.push(await prepareImage(file));
+      }
+      setAttached((current) => [...current, ...prepared].slice(0, MAX_IMAGES));
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || sending || blocked) return;
+    if ((!content && attached.length === 0) || sending || preparing || blocked) return;
     setSending(true);
     setError("");
     try {
-      const result = await sendMessage(botId, content, conversationId || undefined);
+      const result = await sendMessage(
+        botId,
+        content,
+        conversationId || undefined,
+        attached.map((item) => item.base64),
+      );
       setDraft("");
+      clearAttached();
       if (result.conversationId !== conversationId) {
         setSearchParams({ c: result.conversationId }, { replace: true });
       }
@@ -171,6 +221,7 @@ export function StudentChatPage() {
             {messages.map((item) => (
               <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
                 <header>{item.role === "user" ? "我" : "機械人"}</header>
+                <MessageImages paths={item.images} />
                 <MessageText role={item.role} content={item.content} />
                 <time>{formatTime(item.createdAt)}</time>
               </article>
@@ -179,6 +230,18 @@ export function StudentChatPage() {
             <div ref={endRef} />
           </div>
           {error ? <p className="notice">{error}</p> : null}
+          {attached.length > 0 ? (
+            <ul className="attach-list" aria-label="已附上的圖片">
+              {attached.map((item) => (
+                <li key={item.id}>
+                  <img src={item.previewUrl} alt="待送出的圖片" />
+                  <button type="button" disabled={sending} aria-label="移除圖片" onClick={() => removeAttached(item.id)}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <form className="composer" onSubmit={(event) => void submit(event)}>
             <textarea
               value={draft}
@@ -194,10 +257,33 @@ export function StudentChatPage() {
                 }
               }}
             />
-            <button type="submit" className="button" disabled={Boolean(blocked) || sending || !draft.trim()}>
-              送出
-            </button>
+            <div className="composer-actions">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(event) => void pickImages(event)}
+              />
+              <button
+                type="button"
+                className="button secondary"
+                disabled={Boolean(blocked) || sending || preparing || attached.length >= MAX_IMAGES}
+                onClick={() => fileRef.current?.click()}
+              >
+                {preparing ? "處理中…" : "加入圖片"}
+              </button>
+              <button
+                type="submit"
+                className="button"
+                disabled={Boolean(blocked) || sending || preparing || (!draft.trim() && attached.length === 0)}
+              >
+                送出
+              </button>
+            </div>
           </form>
+          <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>
         </div>
       </div>
     </Layout>
