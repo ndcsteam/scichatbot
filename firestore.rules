@@ -78,6 +78,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 學生首頁用 collection group 查詢找出自己加入的機械人，必須單獨開放這條規則。
+    match /{path=**}/members/{studentUid} {
+      allow read: if isStudent() && resource.data.studentUid == request.auth.uid;
+    }
+
     match /chatbots/{botId} {
       allow read: if isAdmin()
         || (isTeacher() && resource.data.ownerId == request.auth.uid)
