@@ -33,6 +33,10 @@ export type BotDocument = {
   status: "processing" | "ready" | "error";
   errorMessage?: string;
   chunkCount?: number;
+  readMode?: "text" | "vision";
+  pageCount?: number;
+  progress?: string;
+  note?: string;
   createdAt?: Timestamp;
 };
 

@@ -2,6 +2,10 @@ import { chunkText } from "./rag.js";
 
 const MAX_TEXT = 200_000;
 
+export function clipText(text: string): string {
+  return text.replace(/\u0000/g, "").slice(0, MAX_TEXT);
+}
+
 export async function extractPlainText(buffer: Buffer, fileName: string): Promise<string> {
   const lower = fileName.toLowerCase();
   let text = "";
@@ -15,7 +19,7 @@ export async function extractPlainText(buffer: Buffer, fileName: string): Promis
   } else {
     throw new Error("只接受 txt、md 或 pdf");
   }
-  return text.replace(/\u0000/g, "").slice(0, MAX_TEXT);
+  return clipText(text);
 }
 
 export function splitDocument(text: string): string[] {

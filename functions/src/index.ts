@@ -8,7 +8,8 @@ import { beforeUserCreated } from "firebase-functions/v2/identity";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { emailMatchesDomain, parseEmailList } from "./domain.js";
-import { extractPlainText, splitDocument } from "./extract.js";
+import { clipText, extractPlainText, splitDocument } from "./extract.js";
+import { describeResult, readPagesWithVision, renderPdfPages } from "./visionPdf.js";
 import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
 import { NO_EMOJI_INSTRUCTION, stripEmoji } from "./emoji.js";
 import { resolveLimits } from "./limits.js";
@@ -34,6 +35,8 @@ export const REGION = "asia-east1";
 const allowedDomain = defineString("ALLOWED_GOOGLE_DOMAIN", { default: "" });
 const bootstrapAdmins = defineString("BOOTSTRAP_ADMIN_EMAILS", { default: "" });
 const poeApiKey = defineSecret("POE_API_KEY");
+// 老師上傳 PDF 時，用來閱讀頁面圖片的視覺模型（需支援圖片輸入）。
+const PDF_VISION_MODEL = "gemini-3.8-flash";
 
 const callOptions = { region: REGION, invoker: "public" as const };
 const ROLES = new Set(["admin", "teacher", "student"]);
@@ -314,8 +317,9 @@ export const deleteDocument = onCall(callOptions, async (request) => {
 });
 
 export const processDocument = onObjectFinalized(
-  { region: REGION, timeoutSeconds: 120, memory: "512MiB" },
+  { region: REGION, timeoutSeconds: 540, memory: "1GiB", secrets: [poeApiKey] },
   async (event) => {
+    const startedAt = Date.now();
     const filePath = event.data.name;
     const matched = filePath.match(/^chatbots\/([^/]+)\/docs\/([^/]+)\/([^/]+)$/);
     if (!matched) return;
@@ -327,7 +331,41 @@ export const processDocument = onObjectFinalized(
     const docRef = db.collection("chatbots").doc(botId).collection("documents").doc(docId);
     try {
       const [buffer] = await getStorage().bucket(event.data.bucket).file(filePath).download();
-      const text = await extractPlainText(buffer, fileName);
+      let text = "";
+      let readMode: "text" | "vision" = "text";
+      let note = "";
+      let pageCount = 0;
+      if (fileName.toLowerCase().endsWith(".pdf")) {
+        try {
+          const rendered = await renderPdfPages(buffer);
+          pageCount = rendered.totalPages;
+          const result = await readPagesWithVision(
+            rendered.pages,
+            (content) => askPoe(PDF_VISION_MODEL, [{ role: "user", content }]),
+            {
+              totalPages: rendered.totalPages,
+              // 留 60 秒給寫入資料庫，逾時的頁面改用純文字。
+              deadline: startedAt + 470_000,
+              onProgress: async (done, total) => {
+                await docRef.set({ progress: `${done}/${total}` }, { merge: true });
+              },
+            },
+          );
+          if (result.visionPages > 0) {
+            text = clipText(result.text);
+            readMode = "vision";
+            note = describeResult(result);
+          }
+        } catch (visionError) {
+          console.error("PDF vision read failed", visionError);
+        }
+        if (readMode === "text") {
+          text = await extractPlainText(buffer, fileName);
+          note = "AI 視覺讀取失敗，已改用純文字讀取（圖片內容無法讀取）";
+        }
+      } else {
+        text = await extractPlainText(buffer, fileName);
+      }
       const parts = splitDocument(text);
       if (parts.length === 0) throw new Error("文件沒有可用文字");
       await deleteChunks(botId, docId);
@@ -336,6 +374,10 @@ export const processDocument = onObjectFinalized(
         {
           status: "ready",
           chunkCount: parts.length,
+          readMode,
+          note: note || FieldValue.delete(),
+          progress: FieldValue.delete(),
+          ...(pageCount > 0 ? { pageCount } : {}),
           errorMessage: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         },

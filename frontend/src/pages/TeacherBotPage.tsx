@@ -410,7 +410,7 @@ export function TeacherBotPage() {
         <div className="settings-block">
           <h3>參考資料</h3>
           <label className="file">
-            上傳 txt、md 或 pdf，每個小於 32MB
+            上傳 txt、md 或 pdf，每個小於 32MB。PDF 會由 AI 逐頁閱讀，連圖片、圖表與公式也會轉成文字（最多前 60 頁，大約每頁需要十多秒）
             <input
               type="file"
               accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
@@ -433,11 +433,14 @@ export function TeacherBotPage() {
                     <strong>{item.fileName}</strong>
                     <span className="muted">
                       {item.status === "ready"
-                        ? `可用，${item.chunkCount ?? 0} 段`
+                        ? `可用，${item.chunkCount ?? 0} 段${item.readMode === "vision" ? "，AI 已閱讀圖片與圖表" : ""}`
                         : item.status === "error"
                           ? `失敗：${item.errorMessage || "無法讀取"}`
-                          : "處理中"}
+                          : item.progress
+                            ? `AI 閱讀中，已完成 ${item.progress} 頁`
+                            : "處理中"}
                     </span>
+                    {item.status === "ready" && item.note ? <span className="muted">注意：{item.note}</span> : null}
                   </div>
                   <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeDoc(item.id)}>
                     刪除
