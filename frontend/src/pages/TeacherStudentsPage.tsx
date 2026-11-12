@@ -230,10 +230,6 @@ export function TeacherStudentsPage() {
           <LinkIcon size={20} />
           加入連結
         </h2>
-        <p className="muted">
-          把連結傳給學生。學生用學校 Google
-          帳號登入後，就會自動加入這個聊天機械人。連結過期後不能再用來加入，已經加入的學生不受影響。
-        </p>
         <div className="inline-form link-form">
           <label>
             連結有效期限
