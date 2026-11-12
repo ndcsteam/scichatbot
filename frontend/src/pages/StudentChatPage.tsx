@@ -255,6 +255,15 @@ export function StudentChatPage() {
               ) : null}
               <button
                 type="button"
+                className="button small new-chat-toggle"
+                disabled={sending || Boolean(blocked)}
+                onClick={startNew}
+              >
+                <PlusIcon size={16} />
+                開新對話
+              </button>
+              <button
+                type="button"
                 className="button secondary small history-toggle"
                 onClick={() => setHistoryOpen(true)}
               >
