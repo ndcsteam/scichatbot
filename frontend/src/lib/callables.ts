@@ -57,6 +57,10 @@ export function deleteDocument(botId: string, docId: string) {
   return call<{ ok: boolean }>("deleteDocument", { botId, docId });
 }
 
-export function sendMessage(botId: string, content: string) {
-  return call<{ answer: string }>("sendMessage", { botId, content });
+export function sendMessage(botId: string, content: string, conversationId?: string) {
+  return call<{ answer: string; conversationId: string }>("sendMessage", {
+    botId,
+    content,
+    ...(conversationId ? { conversationId } : {}),
+  });
 }

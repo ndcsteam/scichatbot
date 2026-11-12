@@ -8,6 +8,7 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
+import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
 import {
   joinDurationFrom,
   joinLinkExpired,
@@ -370,14 +371,20 @@ export const sendMessage = onCall(
     const memberSnap = await botRef.collection("members").doc(studentUid).get();
     if (!memberSnap.exists) throw new HttpsError("permission-denied", "你尚未被邀請使用此聊天機械人");
 
-    const historySnap = await botRef
-      .collection("conversations")
-      .doc(studentUid)
-      .collection("messages")
-      .orderBy("seq", "desc")
-      .limit(20)
-      .get();
-    const history = historySnap.docs
+    const requestedId: unknown = request.data?.conversationId;
+    const conversations = botRef.collection("conversations");
+    const requestedSnap = validConversationId(requestedId) ? await conversations.doc(requestedId).get() : null;
+    const access = conversationAccess(requestedId, requestedSnap?.exists ? requestedSnap.data() ?? {} : null, studentUid);
+    if (access === "missing") throw new HttpsError("not-found", "找不到這個對話");
+    if (access === "denied") throw new HttpsError("permission-denied", "這不是你的對話");
+    const conversationRef =
+      access === "existing" && validConversationId(requestedId) ? conversations.doc(requestedId) : conversations.doc();
+
+    const historySnap =
+      access === "existing"
+        ? await conversationRef.collection("messages").orderBy("seq", "desc").limit(20).get()
+        : null;
+    const history = (historySnap?.docs ?? [])
       .map((item) => item.data())
       .reverse()
       .filter((item) => item.role === "user" || item.role === "assistant")
@@ -407,7 +414,6 @@ export const sendMessage = onCall(
       { role: "user", content },
     ]);
 
-    const conversationRef = botRef.collection("conversations").doc(studentUid);
     const messages = conversationRef.collection("messages");
     const now = FieldValue.serverTimestamp();
     const seq = Date.now();
@@ -419,10 +425,11 @@ export const sendMessage = onCall(
         email: memberSnap.data()?.email ?? request.auth?.token.email ?? "",
         updatedAt: now,
         lastMessage: answer.slice(0, 120),
+        ...(access === "new" ? { title: conversationTitle(content), createdAt: now } : {}),
       },
       { merge: true },
     );
-    return { answer };
+    return { answer, conversationId: conversationRef.id };
   },
 );
 
@@ -540,10 +547,14 @@ async function deleteStudentRecords(studentUid: string): Promise<void> {
   const bots = await db.collection("chatbots").get();
   for (const bot of bots.docs) {
     const memberRef = bot.ref.collection("members").doc(studentUid);
-    const conversationRef = bot.ref.collection("conversations").doc(studentUid);
-    const [memberSnap, conversationSnap] = await Promise.all([memberRef.get(), conversationRef.get()]);
+    const [memberSnap, conversationSnap] = await Promise.all([
+      memberRef.get(),
+      bot.ref.collection("conversations").where("studentUid", "==", studentUid).get(),
+    ]);
     if (memberSnap.exists) await memberRef.delete();
-    if (conversationSnap.exists) await db.recursiveDelete(conversationRef);
+    for (const conversation of conversationSnap.docs) {
+      await db.recursiveDelete(conversation.ref);
+    }
   }
 }
 

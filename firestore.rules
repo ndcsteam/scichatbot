@@ -125,16 +125,20 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
-      match /conversations/{studentUid} {
+      match /conversations/{conversationId} {
         allow read: if isAdmin()
           || ownsBot(botId)
-          || (isStudent() && request.auth.uid == studentUid && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid)));
+          || (isStudent() && resource.data.studentUid == request.auth.uid && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid)));
         allow write: if false;
 
         match /messages/{messageId} {
           allow read: if isAdmin()
             || ownsBot(botId)
-            || (isStudent() && request.auth.uid == studentUid && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid)));
+            || (
+              isStudent()
+              && get(/databases/$(database)/documents/chatbots/$(botId)/conversations/$(conversationId)).data.studentUid == request.auth.uid
+              && exists(/databases/$(database)/documents/chatbots/$(botId)/members/$(request.auth.uid))
+            );
           allow write: if false;
         }
       }

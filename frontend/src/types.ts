@@ -54,7 +54,9 @@ export type JoinLink = {
 export type ConversationMeta = {
   studentUid: string;
   email: string;
+  title?: string;
   lastMessage?: string;
+  createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };
 

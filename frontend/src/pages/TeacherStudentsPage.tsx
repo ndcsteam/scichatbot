@@ -9,12 +9,18 @@ import { errorText, formatTime } from "../lib/format";
 import { durationLabel, JOIN_DURATIONS, joinUrl, remainingText } from "../lib/joinLink";
 import type { Chatbot, ChatMessage, ConversationMeta, JoinDuration, JoinLink, Member } from "../types";
 
+type Thread = ConversationMeta & { id: string };
+
 type Person = {
   uid: string;
   email: string;
   member: boolean;
-  lastMessage?: string;
+  threads: Thread[];
 };
+
+function threadTime(thread: Thread): number {
+  return thread.updatedAt && typeof thread.updatedAt.toMillis === "function" ? thread.updatedAt.toMillis() : 0;
+}
 
 type ActiveLink = JoinLink & { token: string };
 
@@ -25,8 +31,9 @@ export function TeacherStudentsPage() {
   const [bot, setBot] = useState<(Chatbot & { id: string }) | null>(null);
   const [missing, setMissing] = useState(false);
   const [members, setMembers] = useState<Array<Member & { id: string }>>([]);
-  const [conversations, setConversations] = useState<Array<ConversationMeta & { id: string }>>([]);
+  const [conversations, setConversations] = useState<Thread[]>([]);
   const [selectedUid, setSelectedUid] = useState("");
+  const [selectedThreadId, setSelectedThreadId] = useState("");
   const [messages, setMessages] = useState<Array<ChatMessage & { id: string }>>([]);
   const [link, setLink] = useState<ActiveLink | null>(null);
   const [duration, setDuration] = useState<JoinDuration>("24h");
@@ -91,22 +98,22 @@ export function TeacherStudentsPage() {
   }, [botId]);
 
   useEffect(() => {
-    if (!db || !botId || !selectedUid) {
+    if (!db || !botId || !selectedThreadId) {
       setMessages([]);
       return;
     }
     return onSnapshot(
-      query(collection(db, "chatbots", botId, "conversations", selectedUid, "messages"), orderBy("seq", "asc")),
+      query(collection(db, "chatbots", botId, "conversations", selectedThreadId, "messages"), orderBy("seq", "asc")),
       (snap) => {
         setMessages(snap.docs.map((item) => ({ id: item.id, ...(item.data() as ChatMessage) })));
       },
     );
-  }, [botId, selectedUid]);
+  }, [botId, selectedThreadId]);
 
   const people = useMemo(() => {
     const map = new Map<string, Person>();
     for (const member of members) {
-      map.set(member.studentUid, { uid: member.studentUid, email: member.email, member: true });
+      map.set(member.studentUid, { uid: member.studentUid, email: member.email, member: true, threads: [] });
     }
     for (const conversation of conversations) {
       const current = map.get(conversation.studentUid);
@@ -114,12 +121,26 @@ export function TeacherStudentsPage() {
         uid: conversation.studentUid,
         email: current?.email || conversation.email,
         member: current?.member ?? false,
-        lastMessage: conversation.lastMessage,
+        threads: [...(current?.threads ?? []), conversation],
       });
+    }
+    for (const person of map.values()) {
+      person.threads.sort((a, b) => threadTime(b) - threadTime(a));
     }
     return [...map.values()].sort((a, b) => a.email.localeCompare(b.email, "zh-Hant"));
   }, [conversations, members]);
   const selected = people.find((person) => person.uid === selectedUid);
+  const selectedThread = selected?.threads.find((thread) => thread.id === selectedThreadId);
+
+  function chooseStudent(person: Person) {
+    if (person.uid === selectedUid) {
+      setSelectedUid("");
+      setSelectedThreadId("");
+      return;
+    }
+    setSelectedUid(person.uid);
+    setSelectedThreadId(person.threads[0]?.id ?? "");
+  }
 
   const expiresAtMs = link?.expiresAt && typeof link.expiresAt.toMillis === "function" ? link.expiresAt.toMillis() : 0;
   const linkActive = link !== null && expiresAtMs > now;
@@ -252,26 +273,48 @@ export function TeacherStudentsPage() {
           <ul className="plain-list">
             {people.length === 0 ? <li>尚未有學生。</li> : null}
             {people.map((person) => (
-              <li key={person.uid}>
-                <button
-                  type="button"
-                  className={person.uid === selectedUid ? "text-button active" : "text-button"}
-                  onClick={() => setSelectedUid(person.uid)}
-                >
-                  <strong>{person.email}</strong>
-                  <span className="muted">{person.member ? "已加入" : "已退出，紀錄仍保留"}</span>
-                </button>
-                {person.member ? (
-                  <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeMember(person.uid)}>
-                    移除
+              <li key={person.uid} className="person-item">
+                <div className="person-row">
+                  <button
+                    type="button"
+                    className={person.uid === selectedUid ? "text-button active" : "text-button"}
+                    onClick={() => chooseStudent(person)}
+                  >
+                    <strong>{person.email}</strong>
+                    <span className="muted">
+                      {person.member ? "已加入" : "已退出，紀錄仍保留"}，{person.threads.length} 個對話
+                    </span>
                   </button>
+                  {person.member ? (
+                    <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeMember(person.uid)}>
+                      移除
+                    </button>
+                  ) : null}
+                </div>
+                {person.uid === selectedUid ? (
+                  <ul className="plain-list thread-sub">
+                    {person.threads.length === 0 ? <li className="muted">這位學生尚未開始對話。</li> : null}
+                    {person.threads.map((thread) => (
+                      <li key={thread.id}>
+                        <button
+                          type="button"
+                          className={thread.id === selectedThreadId ? "thread-item active" : "thread-item"}
+                          onClick={() => setSelectedThreadId(thread.id)}
+                        >
+                          <strong>{thread.title || "先前的對話"}</strong>
+                          <span className="muted">{formatTime(thread.updatedAt)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </li>
             ))}
           </ul>
           <div className="transcript compact">
             {!selected ? <p className="muted">選擇學生以查看對話。</p> : null}
-            {selected && messages.length === 0 ? <p className="muted">這位學生尚未開始對話。</p> : null}
+            {selected && !selectedThread ? <p className="muted">這位學生尚未開始對話。</p> : null}
+            {selectedThread && messages.length === 0 ? <p className="muted">這個對話沒有訊息。</p> : null}
             {messages.map((item) => (
               <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
                 <header>{item.role === "user" ? "學生" : "機械人"}</header>
