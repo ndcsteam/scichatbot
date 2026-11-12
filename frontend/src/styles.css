@@ -681,27 +681,6 @@ textarea { resize: vertical; line-height: 1.55; }
 .plain-list li:last-child { border-bottom: 0; padding-bottom: 0; }
 .plain-list li > div { display: grid; gap: 0.15rem; }
 
-.plain-list li.person-item { display: grid; gap: 0.6rem; }
-.person-row { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; }
-.thread-sub { padding-left: 0.75rem; gap: 0.5rem; }
-.plain-list .thread-sub li { display: block; padding-bottom: 0; border-bottom: 0; }
-
-.text-button {
-  display: grid;
-  gap: 0.15rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-.text-button.active strong { color: var(--navy-700); }
-
-.split { display: grid; grid-template-columns: minmax(200px, 0.8fr) 1.4fr; gap: 1.25rem; align-items: start; }
-.people-list { max-height: 70vh; max-height: 70dvh; overflow-y: auto; align-content: start; padding-right: 0.25rem; }
-.button.back-to-list { display: none; }
-.person-row > .text-button { min-width: 0; overflow-wrap: anywhere; }
-
 .pill {
   display: inline-flex;
   align-items: center;
@@ -717,6 +696,144 @@ textarea { resize: vertical; line-height: 1.55; }
 .pill.off { background: var(--danger-50); color: var(--danger-700); }
 .pill.teacher { background: var(--gold-100); color: var(--gold-700); }
 .pill.admin { background: var(--violet-50); color: var(--violet-700); }
+
+/* ---------- 學生與對話紀錄（三欄） ---------- */
+
+.records-entry { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.records-entry h2 { margin-bottom: 0.2rem; }
+.records-entry p { margin: 0; }
+
+.shell.fixed { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+.shell.fixed .topbar { flex: none; }
+.main.wide {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.records-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.records-bar {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding: 0.65rem max(1.25rem, env(safe-area-inset-left));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.records-bar .back-link { margin: 0; }
+.records-title { display: flex; align-items: baseline; gap: 0.6rem; min-width: 0; }
+.records-title h1 { font-size: 1.1rem; overflow-wrap: anywhere; }
+.records-notice { flex: none; margin: 0.6rem max(1.25rem, env(safe-area-inset-left)) 0; }
+
+/* 桌面：15% / 15% / 70% */
+.records-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, 15fr) minmax(150px, 15fr) minmax(0, 70fr);
+}
+.records-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.records-col.col-chat { background: var(--surface-alt); border-right: 0; }
+.records-col-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+.records-col-head h2 { margin: 0; font-size: 0.95rem; }
+.records-col-head .count {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--navy-50);
+  color: var(--navy-700);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.records-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0.5rem;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  overflow-y: auto;
+}
+.record-item {
+  position: relative;
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.55rem 1.7rem 0.55rem 0.75rem;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.record-item strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+.record-item span { font-size: 0.76rem; }
+.record-item svg { position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%); color: var(--faint); }
+.record-item:hover { background: var(--navy-50); }
+.record-item.active { background: var(--navy-50); border-color: var(--navy-600); box-shadow: inset 3px 0 0 var(--navy-600); }
+.record-item.active svg { color: var(--navy-600); }
+.records-list .thread-item { padding: 0.55rem 0.75rem; }
+.records-empty { margin: 0; padding: 0.9rem 0.6rem; text-align: center; color: var(--muted); font-size: 0.88rem; list-style: none; }
+.records-foot { flex: none; padding: 0.6rem; border-top: 1px solid var(--line); }
+.records-foot .button { width: 100%; }
+.records-foot.phone-only, .button.records-back { display: none; }
+.records-chat-title { flex: 1; min-width: 0; display: grid; gap: 0.05rem; }
+.records-chat-title h2, .records-chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.records-chat-title span { font-size: 0.8rem; }
+.records-transcript {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.2rem 1.4rem;
+  overflow-y: auto;
+}
+.records-transcript > .records-empty { margin: auto; }
+
+/* 平板：左欄上下疊放學生與對話，右欄看內容 */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .records-grid {
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "students chat" "threads chat";
+  }
+  .records-col.col-students { grid-area: students; border-bottom: 1px solid var(--line); }
+  .records-col.col-threads { grid-area: threads; }
+  .records-col.col-chat { grid-area: chat; }
+}
 
 /* ---------- 聊天 ---------- */
 
@@ -788,17 +905,6 @@ textarea { resize: vertical; line-height: 1.55; }
 .chat-head-side { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
 
 .transcript { flex: 1; display: flex; flex-direction: column; gap: 1.1rem; padding: 1.4rem 0; }
-
-.transcript.compact {
-  flex: none;
-  max-height: 70vh;
-  max-height: 70dvh;
-  overflow: auto;
-  padding: 1rem;
-  background: var(--surface-alt);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-}
 
 .msg { display: flex; gap: 0.75rem; width: 100%; }
 .msg.user { justify-content: flex-end; }
@@ -1029,13 +1135,21 @@ textarea { resize: vertical; line-height: 1.55; }
 
   .login-card { padding: 2rem 1.35rem 1.5rem; }
 
-  .split { grid-template-columns: 1fr; }
-  .split .transcript-pane { display: none; }
-  .split.thread-open .transcript-pane { display: block; }
-  .split.thread-open .people-list { display: none; }
-  .button.back-to-list { display: inline-flex; margin-bottom: 0.7rem; }
-  .people-list { max-height: none; }
-  .transcript.compact { padding: 0.7rem; }
+  /* 學生與對話紀錄：手機一次一欄 */
+  .records-bar { padding: 0.6rem max(0.9rem, env(safe-area-inset-left)); gap: 0.2rem 0.8rem; }
+  .records-notice { margin: 0.5rem 0.9rem 0; }
+  .records-grid { grid-template-columns: minmax(0, 1fr); }
+  .records-col { display: none; border-right: 0; }
+  .records-page.step-students .col-students,
+  .records-page.step-threads .col-threads,
+  .records-page.step-chat .col-chat { display: flex; }
+  .button.records-back { display: inline-flex; }
+  .records-foot.phone-only { display: block; padding-bottom: max(0.6rem, env(safe-area-inset-bottom)); }
+  .button.records-remove { display: none; }
+  .record-item, .records-list .thread-item { min-height: 52px; }
+  .records-transcript { padding: 0.9rem max(0.9rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left)); }
+  .records-entry { flex-direction: column; align-items: stretch; }
+  .records-entry .button { width: 100%; }
 
   .chat-layout { grid-template-columns: 1fr; }
   .chat { min-height: calc(100vh - 7rem); min-height: calc(100dvh - 7rem); }

@@ -14,7 +14,7 @@ const NAV: Record<Exclude<Role, "pending">, Array<{ to: string; label: string }>
   student: [{ to: "/student", label: "我的機械人" }],
 };
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   const { profile, role, signOutUser } = useAuth();
   const links = role && role !== "pending" ? NAV[role] : [];
   const [menuOpen, setMenuOpen] = useState(false);
@@ -25,7 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [location.pathname]);
 
   return (
-    <div className="shell">
+    <div className={wide ? "shell fixed" : "shell"}>
       <header className={menuOpen ? "topbar open" : "topbar"}>
         <Link to="/" className="brand">
           <span className="brand-mark">
@@ -64,7 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="main">{children}</main>
+      <main className={wide ? "main wide" : "main"}>{children}</main>
     </div>
   );
 }
