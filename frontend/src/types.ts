@@ -41,6 +41,16 @@ export type Member = {
   invitedAt?: Timestamp;
 };
 
+export type JoinDuration = "3h" | "24h" | "7d";
+
+export type JoinLink = {
+  botId: string;
+  ownerId: string;
+  duration: JoinDuration;
+  expiresAt: Timestamp;
+  createdAt?: Timestamp;
+};
+
 export type ConversationMeta = {
   studentUid: string;
   email: string;

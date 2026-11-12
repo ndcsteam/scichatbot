@@ -4,6 +4,7 @@ import { LoadingScreen } from "./components/Layout";
 import { homePath, RequireAuth, RequireRole } from "./components/RequireAuth";
 import { AdminBotsPage } from "./pages/AdminBotsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { JoinPage } from "./pages/JoinPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PendingPage } from "./pages/PendingPage";
 import { StudentChatPage } from "./pages/StudentChatPage";
@@ -24,6 +25,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/join/:token" element={<JoinPage />} />
       <Route
         path="/pending"
         element={

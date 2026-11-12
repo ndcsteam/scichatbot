@@ -28,6 +28,7 @@ type AuthContextValue = {
   signingIn: SignInPhase;
   signIn: () => Promise<void>;
   signOutUser: () => Promise<void>;
+  refreshRole: () => Promise<void>;
   clearError: () => void;
 };
 
@@ -184,6 +185,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOutUser: async () => {
         if (!auth) return;
         await signOut(auth);
+      },
+      refreshRole: async () => {
+        if (!user) return;
+        const token = await user.getIdTokenResult(true);
+        setRole(asRole(token.claims.role));
       },
     }),
     [configured, error, profile, ready, role, signingIn, user],

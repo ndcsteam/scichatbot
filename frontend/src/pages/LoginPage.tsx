@@ -3,10 +3,11 @@ import { useAuth } from "../auth/AuthContext";
 import { allowedDomain } from "../firebase";
 import { LoadingScreen } from "../components/Layout";
 import { homePath } from "../components/RequireAuth";
+import { peekAfterLogin } from "../lib/afterLogin";
 
 export function LoginPage() {
   const { ready, configured, user, role, error, signingIn, signIn } = useAuth();
-  if (user && role) return <Navigate to={homePath(role)} replace />;
+  if (user && role) return <Navigate to={peekAfterLogin() ?? homePath(role)} replace />;
   if (!ready && !signingIn) return <LoadingScreen />;
   if (signingIn) {
     return (

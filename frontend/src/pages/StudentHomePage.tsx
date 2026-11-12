@@ -41,7 +41,7 @@ export function StudentHomePage() {
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="muted">老師邀請你之後，聊天機械人會出現在這裡。</p>
+        <p className="muted">打開老師給你的加入連結後，聊天機械人會出現在這裡。</p>
       ) : (
         <ul className="card-list">
           {rows.map((row) => (

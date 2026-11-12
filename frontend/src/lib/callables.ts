@@ -1,6 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
-import type { RegistrationMode, Role } from "../types";
+import type { JoinDuration, RegistrationMode, Role } from "../types";
 
 async function call<T>(name: string, data?: object): Promise<T> {
   if (!functions) throw new Error("尚未設定 Firebase");
@@ -37,8 +37,16 @@ export function deleteChatbot(botId: string) {
   return call<{ ok: boolean }>("deleteChatbot", { botId });
 }
 
-export function inviteStudent(botId: string, email: string) {
-  return call<{ ok: boolean }>("inviteStudent", { botId, email });
+export function createJoinLink(botId: string, duration: JoinDuration) {
+  return call<{ token: string; expiresAt: number }>("createJoinLink", { botId, duration });
+}
+
+export function revokeJoinLink(botId: string) {
+  return call<{ ok: boolean }>("revokeJoinLink", { botId });
+}
+
+export function joinWithLink(token: string) {
+  return call<{ botId: string; botName: string; promoted: boolean }>("joinWithLink", { token });
 }
 
 export function removeStudent(botId: string, studentUid: string) {

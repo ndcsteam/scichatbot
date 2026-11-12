@@ -1,20 +1,13 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { collection, doc, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Layout } from "../components/Layout";
 import { db } from "../firebase";
-import { inviteStudent, removeStudent } from "../lib/callables";
-import {
-  classroomCancelled,
-  connectClassroom,
-  listCourseStudents,
-  listTeachingCourses,
-  type ClassroomCourse,
-  type ClassroomStudent,
-} from "../lib/classroom";
+import { createJoinLink, removeStudent, revokeJoinLink } from "../lib/callables";
 import { errorText, formatTime } from "../lib/format";
-import type { Chatbot, ChatMessage, ConversationMeta, Member } from "../types";
+import { durationLabel, JOIN_DURATIONS, joinUrl, remainingText } from "../lib/joinLink";
+import type { Chatbot, ChatMessage, ConversationMeta, JoinDuration, JoinLink, Member } from "../types";
 
 type Person = {
   uid: string;
@@ -22,6 +15,8 @@ type Person = {
   member: boolean;
   lastMessage?: string;
 };
+
+type ActiveLink = JoinLink & { token: string };
 
 export function TeacherStudentsPage() {
   const { botId = "" } = useParams();
@@ -33,20 +28,21 @@ export function TeacherStudentsPage() {
   const [conversations, setConversations] = useState<Array<ConversationMeta & { id: string }>>([]);
   const [selectedUid, setSelectedUid] = useState("");
   const [messages, setMessages] = useState<Array<ChatMessage & { id: string }>>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
+  const [link, setLink] = useState<ActiveLink | null>(null);
+  const [duration, setDuration] = useState<JoinDuration>("24h");
+  const [now, setNow] = useState(() => Date.now());
   const [message, setMessage] = useState("");
-  const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [classroomToken, setClassroomToken] = useState("");
-  const [courses, setCourses] = useState<ClassroomCourse[]>([]);
-  const [courseId, setCourseId] = useState("");
-  const [roster, setRoster] = useState<ClassroomStudent[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
 
   useEffect(() => {
     const notice = (location.state as { notice?: string } | null)?.notice;
     if (notice) setMessage(notice);
   }, [location.state]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -67,6 +63,18 @@ export function TeacherStudentsPage() {
       },
     );
   }, [botId]);
+
+  useEffect(() => {
+    if (!db || !botId || !user) return;
+    return onSnapshot(
+      query(collection(db, "joinLinks"), where("botId", "==", botId), where("ownerId", "==", user.uid)),
+      (snap) => {
+        const first = snap.docs[0];
+        setLink(first ? { token: first.id, ...(first.data() as JoinLink) } : null);
+      },
+      () => setLink(null),
+    );
+  }, [botId, user]);
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -113,15 +121,16 @@ export function TeacherStudentsPage() {
   }, [conversations, members]);
   const selected = people.find((person) => person.uid === selectedUid);
 
-  async function invite(event: FormEvent) {
-    event.preventDefault();
+  const expiresAtMs = link?.expiresAt && typeof link.expiresAt.toMillis === "function" ? link.expiresAt.toMillis() : 0;
+  const linkActive = link !== null && expiresAtMs > now;
+  const url = link ? joinUrl(link.token) : "";
+
+  async function makeLink() {
     setBusy(true);
     setMessage("");
-    setNotes([]);
     try {
-      await inviteStudent(botId, inviteEmail.trim());
-      setInviteEmail("");
-      setMessage("已邀請學生");
+      await createJoinLink(botId, duration);
+      setMessage("已產生新的加入連結，之前的連結已經失效");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -129,10 +138,32 @@ export function TeacherStudentsPage() {
     }
   }
 
+  async function stopLink() {
+    if (!window.confirm("停用後，連結立即失效；已經加入的學生不受影響。確定停用？")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await revokeJoinLink(botId);
+      setMessage("已停用加入連結");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage("已複製連結");
+    } catch {
+      setMessage("無法自動複製，請自行選取上面的連結複製");
+    }
+  }
+
   async function removeMember(studentUid: string) {
     setBusy(true);
     setMessage("");
-    setNotes([]);
     try {
       await removeStudent(botId, studentUid);
     } catch (error) {
@@ -140,79 +171,6 @@ export function TeacherStudentsPage() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function loadCourses() {
-    const email = user?.email ?? "";
-    if (!email) {
-      setMessage("這個帳號沒有電郵，無法連接 Google Classroom");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    setNotes([]);
-    try {
-      const token = classroomToken || (await connectClassroom(email));
-      setClassroomToken(token);
-      const next = await listTeachingCourses(token);
-      setCourses(next);
-      setCourseId("");
-      setRoster([]);
-      setPicked([]);
-      if (next.length === 0) setMessage("這個 Google 帳號沒有進行中的課堂");
-    } catch (error) {
-      if (!classroomCancelled(error)) setMessage(errorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function chooseCourse(nextCourseId: string) {
-    setCourseId(nextCourseId);
-    setRoster([]);
-    setPicked([]);
-    if (!nextCourseId || !classroomToken) return;
-    setBusy(true);
-    setMessage("");
-    setNotes([]);
-    try {
-      const students = await listCourseStudents(classroomToken, nextCourseId);
-      setRoster(students);
-      setPicked(students.map((student) => student.email));
-      if (students.length === 0) setMessage("這個課堂沒有可匯入的學生電郵");
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function toggleStudent(email: string) {
-    setPicked((current) => (current.includes(email) ? current.filter((item) => item !== email) : [...current, email]));
-  }
-
-  async function importRoster() {
-    const chosen = roster.filter((student) => picked.includes(student.email));
-    if (chosen.length === 0) {
-      setMessage("請先選擇學生");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    setNotes([]);
-    const failed: string[] = [];
-    let invited = 0;
-    for (const student of chosen) {
-      try {
-        await inviteStudent(botId, student.email);
-        invited += 1;
-      } catch (error) {
-        failed.push(`${student.name}（${student.email}）：${errorText(error)}`);
-      }
-    }
-    setNotes(failed);
-    setMessage(failed.length === 0 ? `已邀請 ${invited} 人` : `已邀請 ${invited} 人，${failed.length} 人未能加入`);
-    setBusy(false);
   }
 
   if (missing) {
@@ -243,72 +201,48 @@ export function TeacherStudentsPage() {
         </div>
       </div>
       {message ? <p className="notice">{message}</p> : null}
-      {notes.length > 0 ? (
-        <ul className="plain-list">
-          {notes.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      ) : null}
 
       <section className="panel stack">
-        <h2>邀請學生</h2>
-        <form className="inline-form" onSubmit={(event) => void invite(event)}>
+        <h2>加入連結</h2>
+        <p className="muted">
+          把連結傳給學生。學生用學校 Google 帳號登入後，就會自動加入這個聊天機械人。連結過期後不能再用來加入，已經加入的學生不受影響。
+        </p>
+        <div className="inline-form">
           <label>
-            學生學校電郵
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
-              placeholder="student@school.edu.hk"
-              required
-            />
-          </label>
-          <button type="submit" className="button" disabled={busy}>
-            邀請
-          </button>
-        </form>
-      </section>
-
-      <section className="panel stack">
-        <h2>從 Google Classroom 匯入</h2>
-        <p className="muted">使用這位老師的 Google 帳號讀取進行中的課堂，再選擇要加入的學生。</p>
-        <button type="button" className="button secondary" disabled={busy} onClick={() => void loadCourses()}>
-          {classroomToken ? "重新讀取課堂" : "連接 Google Classroom"}
-        </button>
-        {courses.length > 0 ? (
-          <label>
-            課堂
-            <select value={courseId} disabled={busy} onChange={(event) => void chooseCourse(event.target.value)}>
-              <option value="">選擇課堂</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.section ? `${course.name}（${course.section}）` : course.name}
+            連結有效期限
+            <select value={duration} disabled={busy} onChange={(event) => setDuration(event.target.value as JoinDuration)}>
+              {JOIN_DURATIONS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
           </label>
-        ) : null}
-        {roster.length > 0 ? (
-          <>
-            <div className="choice-list">
-              {roster.map((student) => (
-                <label key={student.email} className="choice">
-                  <input
-                    type="checkbox"
-                    checked={picked.includes(student.email)}
-                    disabled={busy}
-                    onChange={() => toggleStudent(student.email)}
-                  />
-                  <strong>{student.name}</strong>
-                  <span>{student.email}</span>
-                </label>
-              ))}
+          <button type="button" className="button" disabled={busy || bot.disabled} onClick={() => void makeLink()}>
+            {link ? "重新產生連結" : "產生加入連結"}
+          </button>
+        </div>
+        {bot.disabled ? <p className="muted">這個機械人已被管理員停用，學生暫時不能加入。</p> : null}
+        {link ? (
+          <div className="stack">
+            <label>
+              加入連結
+              <input type="text" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <p className={linkActive ? "muted" : "notice"}>
+              {linkActive
+                ? `有效期限 ${durationLabel(link.duration)}，${remainingText(expiresAtMs, now)}（到期：${formatTime(link.expiresAt)}）`
+                : `這個連結已在 ${formatTime(link.expiresAt)} 過期，請重新產生。`}
+            </p>
+            <div className="actions">
+              <button type="button" className="button secondary" disabled={busy || !linkActive} onClick={() => void copyLink()}>
+                複製連結
+              </button>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => void stopLink()}>
+                停用連結
+              </button>
             </div>
-            <button type="button" className="button" disabled={busy || picked.length === 0} onClick={() => void importRoster()}>
-              匯入已選學生
-            </button>
-          </>
+          </div>
         ) : null}
       </section>
 

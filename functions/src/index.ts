@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { FieldPath, FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { beforeUserCreated } from "firebase-functions/v2/identity";
@@ -8,6 +8,14 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
+import {
+  joinDurationFrom,
+  joinLinkExpired,
+  joinLinkExpiry,
+  newJoinToken,
+  roleAfterJoin,
+  validJoinToken,
+} from "./joinLink.js";
 import { buildContext, rankChunks } from "./rag.js";
 import { registrationModeFrom, roleForNewAccount, type RegistrationMode } from "./registration.js";
 
@@ -166,6 +174,7 @@ export const deleteChatbot = onCall({ ...callOptions, timeoutSeconds: 120 }, asy
   if (!allowed) throw new HttpsError("permission-denied", "只有管理員或這位機械人的老師可以刪除");
 
   await deleteChatbotFiles(botId);
+  await deleteJoinLinks(botId);
   await db.recursiveDelete(ref);
   return { ok: true };
 });
@@ -181,33 +190,87 @@ export const setBotDisabled = onCall(callOptions, async (request) => {
   return { ok: true };
 });
 
-export const inviteStudent = onCall(callOptions, async (request) => {
+export const createJoinLink = onCall(callOptions, async (request) => {
   const teacherUid = requireUid(request.auth?.uid);
   if (request.auth?.token.role !== "teacher") {
-    throw new HttpsError("permission-denied", "只有老師可以邀請學生");
+    throw new HttpsError("permission-denied", "只有老師可以建立加入連結");
   }
   const botId = requireString(request.data?.botId, "缺少聊天機械人");
-  const email = requireString(request.data?.email, "請輸入學生電郵").toLowerCase();
+  if (botId.includes("/")) throw new HttpsError("invalid-argument", "缺少聊天機械人");
+  const duration = joinDurationFrom(request.data?.duration);
+  if (!duration) throw new HttpsError("invalid-argument", "請選擇連結有效期限");
   await requireOwnedBot(botId, teacherUid);
 
-  const users = await db.collection("users").where("email", "==", email).limit(1).get();
-  if (users.empty) {
-    throw new HttpsError("not-found", "此學生尚未用學校 Google 登入");
+  await deleteJoinLinks(botId);
+  const token = newJoinToken();
+  const expiresAt = joinLinkExpiry(Date.now(), duration);
+  await db.collection("joinLinks").doc(token).set({
+    botId,
+    ownerId: teacherUid,
+    duration,
+    expiresAt: Timestamp.fromMillis(expiresAt),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { token, expiresAt };
+});
+
+export const revokeJoinLink = onCall(callOptions, async (request) => {
+  const teacherUid = requireUid(request.auth?.uid);
+  if (request.auth?.token.role !== "teacher") {
+    throw new HttpsError("permission-denied", "只有老師可以停用加入連結");
   }
-  const student = users.docs[0];
-  if (!student) throw new HttpsError("not-found", "此學生尚未用學校 Google 登入");
-  const profile = student.data();
-  if (profile.disabled === true) throw new HttpsError("failed-precondition", "此學生帳號已停用");
-  if (profile.role !== "student") {
-    throw new HttpsError("failed-precondition", "請管理員先把此帳號設為學生");
+  const botId = requireString(request.data?.botId, "缺少聊天機械人");
+  if (botId.includes("/")) throw new HttpsError("invalid-argument", "缺少聊天機械人");
+  await requireOwnedBot(botId, teacherUid);
+  await deleteJoinLinks(botId);
+  return { ok: true };
+});
+
+export const joinWithLink = onCall(callOptions, async (request) => {
+  const uid = requireUid(request.auth?.uid);
+  const email = (request.auth?.token.email ?? "").toLowerCase();
+  if (!emailMatchesDomain(email, allowedDomain.value())) {
+    throw new HttpsError("permission-denied", "只允許學校 Google 帳號加入");
+  }
+  const token = request.data?.token;
+  if (!validJoinToken(token)) throw new HttpsError("not-found", "連結無效或已被老師停用");
+
+  const linkSnap = await db.collection("joinLinks").doc(token).get();
+  if (!linkSnap.exists) throw new HttpsError("not-found", "連結無效或已被老師停用");
+  const link = linkSnap.data() ?? {};
+  const expiresAt = link.expiresAt instanceof Timestamp ? link.expiresAt.toMillis() : Number.NaN;
+  if (joinLinkExpired(expiresAt, Date.now())) {
+    throw new HttpsError("failed-precondition", "這個加入連結已過期，請向老師索取新的連結");
   }
 
-  await db.collection("chatbots").doc(botId).collection("members").doc(student.id).set({
-    studentUid: student.id,
-    email,
-    invitedAt: FieldValue.serverTimestamp(),
-  });
-  return { ok: true, studentUid: student.id };
+  const botId = String(link.botId ?? "");
+  if (!botId || botId.includes("/")) throw new HttpsError("not-found", "連結無效或已被老師停用");
+  const botSnap = await db.collection("chatbots").doc(botId).get();
+  if (!botSnap.exists) throw new HttpsError("not-found", "這個聊天機械人已不存在");
+  const bot = botSnap.data() ?? {};
+  if (bot.disabled === true) throw new HttpsError("failed-precondition", "此聊天機械人已停用");
+
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) throw new HttpsError("failed-precondition", "請先完成登入再加入");
+  const profile = userSnap.data() ?? {};
+  if (profile.disabled === true) throw new HttpsError("permission-denied", "此帳號已停用");
+
+  const outcome = roleAfterJoin(profile.role);
+  if (outcome === "blocked") {
+    throw new HttpsError("failed-precondition", "老師和管理員帳號不能以學生身分加入聊天機械人");
+  }
+  const promoted = outcome === "pending-promoted";
+  if (promoted) {
+    await userRef.update({ role: "student" });
+    await auth.setCustomUserClaims(uid, { role: "student" });
+  }
+
+  const memberRef = db.collection("chatbots").doc(botId).collection("members").doc(uid);
+  if (!(await memberRef.get()).exists) {
+    await memberRef.set({ studentUid: uid, email, invitedAt: FieldValue.serverTimestamp() });
+  }
+  return { botId, botName: String(bot.name ?? ""), promoted };
 });
 
 export const removeStudent = onCall(callOptions, async (request) => {
@@ -460,6 +523,17 @@ async function writeChunks(botId: string, documentId: string, parts: string[]): 
 async function deleteChatbotFiles(botId: string): Promise<void> {
   const [files] = await getStorage().bucket().getFiles({ prefix: `chatbots/${botId}/` });
   await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+}
+
+async function deleteJoinLinks(botId: string): Promise<void> {
+  while (true) {
+    const snap = await db.collection("joinLinks").where("botId", "==", botId).limit(400).get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    snap.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+    if (snap.size < 400) return;
+  }
 }
 
 async function deleteStudentRecords(studentUid: string): Promise<void> {
