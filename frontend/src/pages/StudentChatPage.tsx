@@ -12,9 +12,11 @@ export function StudentChatPage() {
   const { botId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const conversationId = searchParams.get("c") ?? "";
+  const startedNew = searchParams.get("new") === "1";
   const { user } = useAuth();
   const [bot, setBot] = useState<Chatbot | null>(null);
   const [blocked, setBlocked] = useState("");
+  const [listReady, setListReady] = useState(false);
   const [conversations, setConversations] = useState<Array<ConversationMeta & { id: string }>>([]);
   const [messages, setMessages] = useState<Array<ChatMessage & { id: string }>>([]);
   const [draft, setDraft] = useState("");
@@ -44,6 +46,7 @@ export function StudentChatPage() {
   }, [botId]);
 
   useEffect(() => {
+    setListReady(false);
     if (!db || !botId || !user || blocked) {
       setConversations([]);
       return;
@@ -56,10 +59,21 @@ export function StudentChatPage() {
       ),
       (snap) => {
         setConversations(snap.docs.map((item) => ({ id: item.id, ...(item.data() as ConversationMeta) })));
+        setListReady(true);
       },
-      () => setConversations([]),
+      () => {
+        setConversations([]);
+        setListReady(true);
+      },
     );
   }, [blocked, botId, user]);
+
+  const latestId = conversations[0]?.id ?? "";
+  useEffect(() => {
+    if (listReady && !conversationId && !startedNew && latestId) {
+      setSearchParams({ c: latestId }, { replace: true });
+    }
+  }, [conversationId, latestId, listReady, setSearchParams, startedNew]);
 
   useEffect(() => {
     if (!db || !botId || !conversationId || blocked) {
@@ -83,7 +97,7 @@ export function StudentChatPage() {
     if (sending) return;
     setError("");
     setDraft("");
-    setSearchParams({}, { replace: true });
+    setSearchParams({ new: "1" }, { replace: true });
   }
 
   function openConversation(id: string) {
@@ -147,7 +161,7 @@ export function StudentChatPage() {
           </header>
           <div className="transcript">
             {blocked ? <p className="notice">{blocked}</p> : null}
-            {!blocked && messages.length === 0 && bot?.welcomeMessage ? (
+            {!blocked && !conversationId && (startedNew || (listReady && conversations.length === 0)) && bot?.welcomeMessage ? (
               <article className="bubble assistant">
                 <header>機械人</header>
                 <p>{bot.welcomeMessage}</p>
