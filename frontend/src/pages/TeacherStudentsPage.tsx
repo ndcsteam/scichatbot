@@ -228,12 +228,17 @@ export function TeacherStudentsPage() {
       <section className="panel stack">
         <h2>加入連結</h2>
         <p className="muted">
-          把連結傳給學生。學生用學校 Google 帳號登入後，就會自動加入這個聊天機械人。連結過期後不能再用來加入，已經加入的學生不受影響。
+          把連結傳給學生。學生用學校 Google
+          帳號登入後，就會自動加入這個聊天機械人。連結過期後不能再用來加入，已經加入的學生不受影響。
         </p>
-        <div className="inline-form">
+        <div className="inline-form link-form">
           <label>
             連結有效期限
-            <select value={duration} disabled={busy} onChange={(event) => setDuration(event.target.value as JoinDuration)}>
+            <select
+              value={duration}
+              disabled={busy}
+              onChange={(event) => setDuration(event.target.value as JoinDuration)}
+            >
               {JOIN_DURATIONS.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -257,8 +262,13 @@ export function TeacherStudentsPage() {
                 ? `有效期限 ${durationLabel(link.duration)}，${remainingText(expiresAtMs, now)}（到期：${formatTime(link.expiresAt)}）`
                 : `這個連結已在 ${formatTime(link.expiresAt)} 過期，請重新產生。`}
             </p>
-            <div className="actions">
-              <button type="button" className="button secondary" disabled={busy || !linkActive} onClick={() => void copyLink()}>
+            <div className="actions link-actions">
+              <button
+                type="button"
+                className="button secondary"
+                disabled={busy || !linkActive}
+                onClick={() => void copyLink()}
+              >
                 複製連結
               </button>
               <button type="button" className="button secondary" disabled={busy} onClick={() => void stopLink()}>
@@ -271,8 +281,8 @@ export function TeacherStudentsPage() {
 
       <section className="panel stack">
         <h2>學生與對話紀錄</h2>
-        <div className="split">
-          <ul className="plain-list">
+        <div className={selectedThread ? "split thread-open" : "split"}>
+          <ul className="plain-list people-list">
             {people.length === 0 ? <li>尚未有學生。</li> : null}
             {people.map((person) => (
               <li key={person.uid} className="person-item">
@@ -288,7 +298,12 @@ export function TeacherStudentsPage() {
                     </span>
                   </button>
                   {person.member ? (
-                    <button type="button" className="button small secondary" disabled={busy} onClick={() => void removeMember(person.uid)}>
+                    <button
+                      type="button"
+                      className="button small secondary"
+                      disabled={busy}
+                      onClick={() => void removeMember(person.uid)}
+                    >
                       移除
                     </button>
                   ) : null}
@@ -313,18 +328,27 @@ export function TeacherStudentsPage() {
               </li>
             ))}
           </ul>
-          <div className="transcript compact">
-            {!selected ? <p className="muted">選擇學生以查看對話。</p> : null}
-            {selected && !selectedThread ? <p className="muted">這位學生尚未開始對話。</p> : null}
-            {selectedThread && messages.length === 0 ? <p className="muted">這個對話沒有訊息。</p> : null}
-            {messages.map((item) => (
-              <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
-                <header>{item.role === "user" ? "學生" : "機械人"}</header>
-                <MessageImages paths={item.images} />
-                <MessageText role={item.role} content={item.content} />
-                <time>{formatTime(item.createdAt)}</time>
-              </article>
-            ))}
+          <div className="transcript-pane">
+            <button
+              type="button"
+              className="button secondary small back-to-list"
+              onClick={() => setSelectedThreadId("")}
+            >
+              返回學生清單
+            </button>
+            <div className="transcript compact">
+              {!selected ? <p className="muted">選擇學生以查看對話。</p> : null}
+              {selected && !selectedThread ? <p className="muted">這位學生尚未開始對話。</p> : null}
+              {selectedThread && messages.length === 0 ? <p className="muted">這個對話沒有訊息。</p> : null}
+              {messages.map((item) => (
+                <article key={item.id} className={item.role === "user" ? "bubble user" : "bubble assistant"}>
+                  <header>{item.role === "user" ? "學生" : "機械人"}</header>
+                  <MessageImages paths={item.images} />
+                  <MessageText role={item.role} content={item.content} />
+                  <time>{formatTime(item.createdAt)}</time>
+                </article>
+              ))}
+            </div>
           </div>
         </div>
       </section>

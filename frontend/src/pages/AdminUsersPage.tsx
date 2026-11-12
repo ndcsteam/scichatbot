@@ -168,7 +168,7 @@ export function AdminUsersPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6}>尚未有人登入。</td>
+                <td colSpan={6} className="empty-cell">尚未有人登入。</td>
               </tr>
             ) : (
               rows.map((row) => {
@@ -176,9 +176,9 @@ export function AdminUsersPage() {
                 const selected = drafts[row.id] ?? row.role;
                 return (
                   <tr key={row.id}>
-                    <td>{row.displayName}</td>
-                    <td>{row.email}</td>
-                    <td>
+                    <td data-label="姓名">{row.displayName}</td>
+                    <td data-label="電郵">{row.email}</td>
+                    <td data-label="角色">
                       <select
                         value={selected === "pending" ? "pending" : selected}
                         disabled={self || busyId === row.id}
@@ -194,8 +194,8 @@ export function AdminUsersPage() {
                         ))}
                       </select>
                     </td>
-                    <td>{row.disabled ? "已停用" : "使用中"}</td>
-                    <td>{formatTime(row.createdAt)}</td>
+                    <td data-label="狀態">{row.disabled ? "已停用" : "使用中"}</td>
+                    <td data-label="首次登入">{formatTime(row.createdAt)}</td>
                     <td className="actions">
                       <button
                         type="button"

@@ -72,16 +72,16 @@ export function AdminBotsPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6}>尚未有聊天機械人。</td>
+                <td colSpan={6} className="empty-cell">尚未有聊天機械人。</td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.id}>
-                  <td>{row.name}</td>
-                  <td>{row.ownerEmail}</td>
-                  <td>{row.model}</td>
-                  <td>{row.ragEnabled ? "已上傳" : "未上傳"}</td>
-                  <td>{row.disabled ? "已停用" : "使用中"}</td>
+                  <td data-label="名稱">{row.name}</td>
+                  <td data-label="老師">{row.ownerEmail}</td>
+                  <td data-label="模型">{row.model}</td>
+                  <td data-label="參考資料">{row.ragEnabled ? "已上傳" : "未上傳"}</td>
+                  <td data-label="狀態">{row.disabled ? "已停用" : "使用中"}</td>
                   <td className="actions">
                     <button
                       type="button"

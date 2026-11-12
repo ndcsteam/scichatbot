@@ -29,6 +29,8 @@ export function StudentChatPage() {
   const [preparing, setPreparing] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -99,8 +101,25 @@ export function StudentChatPage() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
+  useEffect(() => {
+    const box = draftRef.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, 144)}px`;
+  }, [draft]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setHistoryOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [historyOpen]);
+
   function startNew() {
     if (sending) return;
+    setHistoryOpen(false);
     setError("");
     setDraft("");
     clearAttached();
@@ -108,7 +127,9 @@ export function StudentChatPage() {
   }
 
   function openConversation(id: string) {
-    if (sending || id === conversationId) return;
+    if (sending) return;
+    setHistoryOpen(false);
+    if (id === conversationId) return;
     setError("");
     setSearchParams({ c: id }, { replace: true });
   }
@@ -179,10 +200,23 @@ export function StudentChatPage() {
   return (
     <Layout>
       <div className="chat-layout">
-        <aside className="thread-list" aria-label="對話歷史">
-          <button type="button" className="button" disabled={sending || Boolean(blocked)} onClick={startNew}>
-            開新對話
-          </button>
+        {historyOpen ? (
+          <button
+            type="button"
+            className="drawer-backdrop"
+            aria-label="關閉對話紀錄"
+            onClick={() => setHistoryOpen(false)}
+          />
+        ) : null}
+        <aside className={historyOpen ? "thread-list open" : "thread-list"} aria-label="對話歷史">
+          <div className="thread-actions">
+            <button type="button" className="button" disabled={sending || Boolean(blocked)} onClick={startNew}>
+              開新對話
+            </button>
+            <button type="button" className="button secondary drawer-close" onClick={() => setHistoryOpen(false)}>
+              關閉
+            </button>
+          </div>
           <ul className="plain-list">
             {conversations.length === 0 ? <li className="muted">還沒有對話。</li> : null}
             {conversations.map((item) => (
@@ -208,11 +242,23 @@ export function StudentChatPage() {
               </Link>
               <h1>{bot?.name || "聊天"}</h1>
             </div>
-            {bot?.ragEnabled ? <span className="pill">會參考老師上傳的資料</span> : null}
+            <div className="chat-head-side">
+              {bot?.ragEnabled ? <span className="pill">會參考老師上傳的資料</span> : null}
+              <button
+                type="button"
+                className="button secondary small history-toggle"
+                onClick={() => setHistoryOpen(true)}
+              >
+                對話紀錄
+              </button>
+            </div>
           </header>
           <div className="transcript">
             {blocked ? <p className="notice">{blocked}</p> : null}
-            {!blocked && !conversationId && (startedNew || (listReady && conversations.length === 0)) && bot?.welcomeMessage ? (
+            {!blocked &&
+            !conversationId &&
+            (startedNew || (listReady && conversations.length === 0)) &&
+            bot?.welcomeMessage ? (
               <article className="bubble assistant">
                 <header>機械人</header>
                 <p>{bot.welcomeMessage}</p>
@@ -229,61 +275,73 @@ export function StudentChatPage() {
             {sending ? <p className="muted">正在回覆…</p> : null}
             <div ref={endRef} />
           </div>
-          {error ? <p className="notice">{error}</p> : null}
-          {attached.length > 0 ? (
-            <ul className="attach-list" aria-label="已附上的圖片">
-              {attached.map((item) => (
-                <li key={item.id}>
-                  <img src={item.previewUrl} alt="待送出的圖片" />
-                  <button type="button" disabled={sending} aria-label="移除圖片" onClick={() => removeAttached(item.id)}>
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <form className="composer" onSubmit={(event) => void submit(event)}>
-            <textarea
-              value={draft}
-              rows={3}
-              maxLength={4000}
-              placeholder="輸入問題"
-              disabled={Boolean(blocked) || sending}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-            />
-            <div className="composer-actions">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(event) => void pickImages(event)}
+          <div className={attached.length > 0 ? "composer-dock has-images" : "composer-dock"}>
+            {error ? <p className="notice">{error}</p> : null}
+            {attached.length > 0 ? (
+              <ul className="attach-list" aria-label="已附上的圖片">
+                {attached.map((item) => (
+                  <li key={item.id}>
+                    <img src={item.previewUrl} alt="待送出的圖片" />
+                    <button
+                      type="button"
+                      disabled={sending}
+                      aria-label="移除圖片"
+                      onClick={() => removeAttached(item.id)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <form className="composer" onSubmit={(event) => void submit(event)}>
+              <textarea
+                ref={draftRef}
+                value={draft}
+                rows={1}
+                maxLength={4000}
+                placeholder="輸入問題"
+                disabled={Boolean(blocked) || sending}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
               />
-              <button
-                type="button"
-                className="button secondary"
-                disabled={Boolean(blocked) || sending || preparing || attached.length >= MAX_IMAGES}
-                onClick={() => fileRef.current?.click()}
-              >
-                {preparing ? "處理中…" : "加入圖片"}
-              </button>
-              <button
-                type="submit"
-                className="button"
-                disabled={Boolean(blocked) || sending || preparing || (!draft.trim() && attached.length === 0)}
-              >
-                送出
-              </button>
-            </div>
-          </form>
-          <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>
+              <div className="composer-actions">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={(event) => void pickImages(event)}
+                />
+                <button
+                  type="button"
+                  className="button secondary attach-button"
+                  aria-label="加入圖片"
+                  disabled={Boolean(blocked) || sending || preparing || attached.length >= MAX_IMAGES}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <span className="label-full">{preparing ? "處理中…" : "加入圖片"}</span>
+                  <span className="label-short" aria-hidden="true">
+                    {preparing ? "…" : "+"}
+                  </span>
+                </button>
+                <button
+                  type="submit"
+                  className="button send-button"
+                  disabled={Boolean(blocked) || sending || preparing || (!draft.trim() && attached.length === 0)}
+                >
+                  送出
+                </button>
+              </div>
+            </form>
+            <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>
+          </div>
         </div>
       </div>
     </Layout>
