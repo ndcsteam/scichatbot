@@ -460,6 +460,11 @@ textarea { resize: vertical; }
 .composer-note { margin: 0.4rem 0 0; font-size: 0.8rem; }
 .label-short { display: none; }
 
+.advanced-settings summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; }
+.advanced-settings[open] summary { margin-bottom: 0.4rem; }
+.limit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem; }
+.limit-grid .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+
 .attach-list { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0 0 0.6rem; padding: 0; list-style: none; }
 .attach-list li { position: relative; }
 .attach-list img { display: block; width: 84px; height: 84px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); }
@@ -580,6 +585,9 @@ textarea { resize: vertical; }
   .attach-button { grid-column: 1; grid-row: 1; width: 44px; padding: 0; }
   .composer textarea { grid-column: 2; grid-row: 1; min-height: 44px; padding: 0.6rem 0.8rem; }
   .send-button { grid-column: 3; grid-row: 1; padding-inline: 1rem; }
+  .composer.no-images { grid-template-columns: 1fr auto; }
+  .composer.no-images textarea { grid-column: 1; }
+  .composer.no-images .send-button { grid-column: 2; }
   .label-full { display: none; }
   .label-short { display: inline; font-size: 1.5rem; line-height: 1; }
   .composer-dock .composer-note { display: none; }

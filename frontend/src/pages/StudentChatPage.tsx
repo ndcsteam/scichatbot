@@ -7,7 +7,8 @@ import { MessageImages } from "../components/MessageImages";
 import { MessageText } from "../components/MessageText";
 import { db } from "../firebase";
 import { sendMessage } from "../lib/callables";
-import { MAX_IMAGES, prepareImage, type PreparedImage } from "../lib/image";
+import { prepareImage, type PreparedImage } from "../lib/image";
+import { imageBudget, resolveLimits } from "../lib/limits";
 import { errorText, formatTime } from "../lib/format";
 import type { Chatbot, ChatMessage, ConversationMeta } from "../types";
 
@@ -31,6 +32,8 @@ export function StudentChatPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const limits = resolveLimits(bot?.limits);
+  const maxImages = limits.maxImages;
 
   useEffect(() => {
     if (!db || !botId) return;
@@ -152,19 +155,19 @@ export function StudentChatPage() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (files.length === 0) return;
-    const room = MAX_IMAGES - attached.length;
+    const room = maxImages - attached.length;
     if (room <= 0) {
-      setError(`一次最多可以附上 ${MAX_IMAGES} 張圖片`);
+      setError(`一次最多可以附上 ${maxImages} 張圖片`);
       return;
     }
-    setError(files.length > room ? `一次最多可以附上 ${MAX_IMAGES} 張圖片，多出的已略過` : "");
+    setError(files.length > room ? `一次最多可以附上 ${maxImages} 張圖片，多出的已略過` : "");
     setPreparing(true);
     try {
       const prepared: PreparedImage[] = [];
       for (const file of files.slice(0, room)) {
-        prepared.push(await prepareImage(file));
+        prepared.push(await prepareImage(file, imageBudget(maxImages)));
       }
-      setAttached((current) => [...current, ...prepared].slice(0, MAX_IMAGES));
+      setAttached((current) => [...current, ...prepared].slice(0, maxImages));
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -294,12 +297,15 @@ export function StudentChatPage() {
                 ))}
               </ul>
             ) : null}
-            <form className="composer" onSubmit={(event) => void submit(event)}>
+            <form
+              className={maxImages > 0 ? "composer" : "composer no-images"}
+              onSubmit={(event) => void submit(event)}
+            >
               <textarea
                 ref={draftRef}
                 value={draft}
                 rows={1}
-                maxLength={4000}
+                maxLength={limits.maxChars}
                 placeholder="輸入問題"
                 disabled={Boolean(blocked) || sending}
                 onChange={(event) => setDraft(event.target.value)}
@@ -319,18 +325,20 @@ export function StudentChatPage() {
                   hidden
                   onChange={(event) => void pickImages(event)}
                 />
-                <button
-                  type="button"
-                  className="button secondary attach-button"
-                  aria-label="加入圖片"
-                  disabled={Boolean(blocked) || sending || preparing || attached.length >= MAX_IMAGES}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <span className="label-full">{preparing ? "處理中…" : "加入圖片"}</span>
-                  <span className="label-short" aria-hidden="true">
-                    {preparing ? "…" : "+"}
-                  </span>
-                </button>
+                {maxImages > 0 ? (
+                  <button
+                    type="button"
+                    className="button secondary attach-button"
+                    aria-label="加入圖片"
+                    disabled={Boolean(blocked) || sending || preparing || attached.length >= maxImages}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <span className="label-full">{preparing ? "處理中…" : "加入圖片"}</span>
+                    <span className="label-short" aria-hidden="true">
+                      {preparing ? "…" : "+"}
+                    </span>
+                  </button>
+                ) : null}
                 <button
                   type="submit"
                   className="button send-button"
@@ -340,7 +348,9 @@ export function StudentChatPage() {
                 </button>
               </div>
             </form>
-            <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>
+            {maxImages > 0 ? (
+              <p className="muted composer-note">圖片會傳送給 AI，老師也看得到。請勿上載含有個人資料的相片。</p>
+            ) : null}
           </div>
         </div>
       </div>

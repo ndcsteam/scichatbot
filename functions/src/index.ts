@@ -11,6 +11,7 @@ import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
 import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
 import { NO_EMOJI_INSTRUCTION, stripEmoji } from "./emoji.js";
+import { resolveLimits } from "./limits.js";
 import { IMAGE_ONLY_PROMPT, decodeImages, historyText, imageDataUrl, newImagePath } from "./image.js";
 import {
   joinDurationFrom,
@@ -362,13 +363,6 @@ export const sendMessage = onCall(
       throw new HttpsError("permission-denied", "只有學生可以傳送訊息");
     }
     const botId = requireString(request.data?.botId, "缺少聊天機械人");
-    const content = String(request.data?.content ?? "").trim();
-    if (content.length > 4000) throw new HttpsError("invalid-argument", "訊息最長 4000 字");
-    const decoded = decodeImages(request.data?.images);
-    if (!decoded.ok) throw new HttpsError("invalid-argument", decoded.message);
-    const images = decoded.images;
-    if (!content && images.length === 0) throw new HttpsError("invalid-argument", "請輸入訊息");
-
     const botRef = db.collection("chatbots").doc(botId);
     const botSnap = await botRef.get();
     if (!botSnap.exists) throw new HttpsError("not-found", "找不到聊天機械人");
@@ -377,6 +371,16 @@ export const sendMessage = onCall(
 
     const memberSnap = await botRef.collection("members").doc(studentUid).get();
     if (!memberSnap.exists) throw new HttpsError("permission-denied", "你尚未被邀請使用此聊天機械人");
+
+    const limits = resolveLimits(bot.limits);
+    const content = String(request.data?.content ?? "").trim();
+    if (content.length > limits.maxChars) {
+      throw new HttpsError("invalid-argument", `訊息最長 ${limits.maxChars} 字`);
+    }
+    const decoded = decodeImages(request.data?.images, limits.maxImages);
+    if (!decoded.ok) throw new HttpsError("invalid-argument", decoded.message);
+    const images = decoded.images;
+    if (!content && images.length === 0) throw new HttpsError("invalid-argument", "請輸入訊息");
 
     const requestedId: unknown = request.data?.conversationId;
     const conversations = botRef.collection("conversations");
@@ -389,7 +393,7 @@ export const sendMessage = onCall(
 
     const historySnap =
       access === "existing"
-        ? await conversationRef.collection("messages").orderBy("seq", "desc").limit(20).get()
+        ? await conversationRef.collection("messages").orderBy("seq", "desc").limit(limits.historyLimit).get()
         : null;
     const history = (historySnap?.docs ?? [])
       .map((item) => item.data())

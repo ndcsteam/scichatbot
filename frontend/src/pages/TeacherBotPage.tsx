@@ -18,6 +18,7 @@ import { db, storage } from "../firebase";
 import { deleteChatbot, deleteDocument } from "../lib/callables";
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, DEFAULT_WELCOME } from "../lib/defaults";
 import { errorText } from "../lib/format";
+import { LIMIT_BOUNDS, resolveLimits } from "../lib/limits";
 import {
   POE_LAB_LABEL,
   chatModels,
@@ -45,6 +46,8 @@ export function TeacherBotPage() {
   const [modelsNote, setModelsNote] = useState("");
   const [model, setModel] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const limitValues = resolveLimits(bot?.limits);
 
   useEffect(() => {
     setMessage("");
@@ -126,6 +129,11 @@ export function TeacherBotPage() {
       model: String(data.get("model") ?? "").trim() || DEFAULT_MODEL,
       systemPrompt: String(data.get("systemPrompt") ?? ""),
       welcomeMessage: String(data.get("welcomeMessage") ?? ""),
+      limits: resolveLimits({
+        historyLimit: Number(data.get("historyLimit")),
+        maxChars: Number(data.get("maxChars")),
+        maxImages: Number(data.get("maxImages")),
+      }),
     };
   }
 
@@ -337,6 +345,65 @@ export function TeacherBotPage() {
           歡迎詞
           <textarea name="welcomeMessage" defaultValue={shown.welcomeMessage} maxLength={2000} rows={3} />
         </label>
+        <details
+          className="settings-block advanced-settings"
+          open={advancedOpen}
+          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        >
+          <summary>進階設定</summary>
+          <div className="limit-grid" key={shown.id}>
+            <label>
+              AI 記得的訊息數
+              <input
+                type="number"
+                name="historyLimit"
+                step={1}
+                required
+                min={LIMIT_BOUNDS.historyLimit.min}
+                max={LIMIT_BOUNDS.historyLimit.max}
+                defaultValue={limitValues.historyLimit}
+                onInvalid={() => setAdvancedOpen(true)}
+              />
+              <span className="hint">
+                每次回答時，AI 會看到同一個對話最近的幾則訊息（學生和機械人合計）。範圍 {LIMIT_BOUNDS.historyLimit.min} 至{" "}
+                {LIMIT_BOUNDS.historyLimit.max}，預設 {LIMIT_BOUNDS.historyLimit.fallback}。
+              </span>
+            </label>
+            <label>
+              每則訊息最多字數
+              <input
+                type="number"
+                name="maxChars"
+                step={1}
+                required
+                min={LIMIT_BOUNDS.maxChars.min}
+                max={LIMIT_BOUNDS.maxChars.max}
+                defaultValue={limitValues.maxChars}
+                onInvalid={() => setAdvancedOpen(true)}
+              />
+              <span className="hint">
+                範圍 {LIMIT_BOUNDS.maxChars.min} 至 {LIMIT_BOUNDS.maxChars.max}，預設 {LIMIT_BOUNDS.maxChars.fallback}。
+              </span>
+            </label>
+            <label>
+              每則訊息最多圖片數
+              <input
+                type="number"
+                name="maxImages"
+                step={1}
+                required
+                min={LIMIT_BOUNDS.maxImages.min}
+                max={LIMIT_BOUNDS.maxImages.max}
+                defaultValue={limitValues.maxImages}
+                onInvalid={() => setAdvancedOpen(true)}
+              />
+              <span className="hint">
+                範圍 {LIMIT_BOUNDS.maxImages.min} 至 {LIMIT_BOUNDS.maxImages.max}，預設 {LIMIT_BOUNDS.maxImages.fallback}。設為 0
+                表示不接受圖片。
+              </span>
+            </label>
+          </div>
+        </details>
         <div className="settings-block">
           <h3>參考資料</h3>
           <label className="file">

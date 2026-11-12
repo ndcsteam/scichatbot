@@ -22,6 +22,7 @@ export type Chatbot = {
   welcomeMessage: string;
   ragEnabled: boolean;
   disabled: boolean;
+  limits?: { historyLimit?: number; maxChars?: number; maxImages?: number };
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };

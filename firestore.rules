@@ -30,6 +30,15 @@ service cloud.firestore {
       return isTeacher() && get(botPath(botId)).data.ownerId == request.auth.uid;
     }
 
+    // 上下限需與 functions/src/limits.ts、frontend/src/lib/limits.ts 一致。
+    function validLimits(limits) {
+      return limits is map
+        && limits.keys().hasOnly(["historyLimit", "maxChars", "maxImages"])
+        && limits.historyLimit is int && limits.historyLimit >= 2 && limits.historyLimit <= 50
+        && limits.maxChars is int && limits.maxChars >= 200 && limits.maxChars <= 8000
+        && limits.maxImages is int && limits.maxImages >= 0 && limits.maxImages <= 8;
+    }
+
     function validBot(data) {
       return data.keys().hasOnly([
           "ownerId",
@@ -40,9 +49,11 @@ service cloud.firestore {
           "welcomeMessage",
           "ragEnabled",
           "disabled",
+          "limits",
           "createdAt",
           "updatedAt"
         ])
+        && (!("limits" in data) || validLimits(data.limits))
         && data.ownerId is string
         && data.ownerEmail is string
         && data.ownerEmail.size() > 0
