@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { stripEmoji } from "../lib/emoji";
 
 export function MessageText({ role, content }: { role: "user" | "assistant"; content: string }) {
   if (role === "user") return <p>{content}</p>;
@@ -15,7 +16,7 @@ export function MessageText({ role, content }: { role: "user" | "assistant"; con
           ),
         }}
       >
-        {content}
+        {stripEmoji(content)}
       </ReactMarkdown>
     </div>
   );

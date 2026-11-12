@@ -9,6 +9,7 @@ import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { emailMatchesDomain, parseEmailList } from "./domain.js";
 import { extractPlainText, splitDocument } from "./extract.js";
 import { conversationAccess, conversationTitle, validConversationId } from "./conversation.js";
+import { NO_EMOJI_INSTRUCTION, stripEmoji } from "./emoji.js";
 import {
   joinDurationFrom,
   joinLinkExpired,
@@ -390,7 +391,7 @@ export const sendMessage = onCall(
       .filter((item) => item.role === "user" || item.role === "assistant")
       .map((item) => ({
         role: item.role as "user" | "assistant",
-        content: String(item.content ?? ""),
+        content: item.role === "assistant" ? stripEmoji(String(item.content ?? "")) : String(item.content ?? ""),
       }));
 
     let systemPrompt = String(bot.systemPrompt ?? "").trim();
@@ -407,6 +408,7 @@ export const sendMessage = onCall(
         : "目前沒有檢索到相關參考資料。若問題超出已提供的資料，請明白說明。";
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${guidance}` : guidance;
     }
+    systemPrompt = systemPrompt ? `${systemPrompt}\n\n${NO_EMOJI_INSTRUCTION}` : NO_EMOJI_INSTRUCTION;
 
     const answer = await askPoe(String(bot.model ?? ""), [
       ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
@@ -457,7 +459,7 @@ async function askPoe(
     const detail = body?.error?.message || `Poe API 回應 ${response.status}`;
     throw new HttpsError("internal", detail.slice(0, 300));
   }
-  const answer = readContent(body?.choices?.[0]?.message?.content).trim();
+  const answer = stripEmoji(readContent(body?.choices?.[0]?.message?.content)).trim();
   if (!answer) throw new HttpsError("internal", "模型沒有回覆內容");
   return answer;
 }
